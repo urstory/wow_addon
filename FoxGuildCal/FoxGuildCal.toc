@@ -1,0 +1,11 @@
+## Interface: 11507
+## Title: FoxGuildCal
+## Notes: Guild-wide shared calendar and notes system
+## Author: FoxDev
+## Version: 1.0.0
+## SavedVariables: FoxGuildCalDB
+
+Core.lua
+Calendar.lua
+Sync.lua
+Minimap.lua

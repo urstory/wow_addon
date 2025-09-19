@@ -1,0 +1,13 @@
+## Interface: 11503
+## Title: Low Health Alert
+## Author: toto (https://www.youtube.com/@funnyjava)
+## Version: 1.0
+## Notes: Shows a macro button when health drops below threshold
+## SavedVariablesPerCharacter: LowHealthAlertDB
+
+Localization.lua
+LowHealthAlert.xml
+LowHealthAlert.lua
+LowHealthAlert_MinimapButton.lua
+LowHealthAlert_SimpleConfig.lua
+LowHealthAlert_Commands.lua

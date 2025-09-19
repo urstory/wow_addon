@@ -1,0 +1,11 @@
+## Interface: 11500
+## Title: WowPostIt
+## Notes: Simple note-taking addon with minimap button
+## Notes-koKR: 미니맵 버튼이 있는 간단한 메모 애드온
+## Author: YourName
+## Version: 1.0
+## SavedVariables: WowPostItDB
+
+Localization.lua
+WowPostIt.lua
+WowPostIt_Config.lua

@@ -1,0 +1,11 @@
+## Interface: 11503
+## Title: DruidManaBar
+## Author: toto (https://www.youtube.com/@funnyjava)
+## Version: 1.0
+## Notes: Shows mana and health bars with shapeshift cost indicators for druids
+## Notes-koKR: 드루이드를 위한 마나/체력 바와 변신 비용 표시기
+## SavedVariables: DruidManaBarDB
+
+Localization.lua
+DruidManaBar.lua
+DruidManaBar_Config.lua

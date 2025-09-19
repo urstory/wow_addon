@@ -1,0 +1,14 @@
+## Interface: 11200
+## Title: SimpleFindParty
+## Author: Your Name
+## Version: 1.0
+## Notes: 파티찾기 채널 메시지 필터링 애드온
+## SavedVariablesPerCharacter:
+## SavedVariables: SimpleFindPartyDB
+
+TestChat.lua
+FilterSystem.lua
+MinimapButton.lua
+SettingsFrame.lua
+MessageFrame.lua
+SimpleFindParty.lua
