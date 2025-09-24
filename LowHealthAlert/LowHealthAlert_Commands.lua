@@ -51,8 +51,4 @@ cmdFrame:SetScript("OnEvent", function()
     SLASH_LOWHEALTHALERT1 = "/lha"
     SLASH_LOWHEALTHALERT2 = "/lowhealthalert"
     SlashCmdList["LOWHEALTHALERT"] = HandleSlashCommand
-    
-    -- 디버그용 메시지
-    local L = addon.L
-    print(L["ADDON_LOADED"])
 end)

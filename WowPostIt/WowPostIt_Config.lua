@@ -18,17 +18,39 @@ function addon:ShowNoteWindow()
     if not noteWindow then
         -- 메인 프레임 생성
         noteWindow = CreateFrame("Frame", "WowPostItWindow", UIParent, "BasicFrameTemplateWithInset")
-        noteWindow:SetSize(600, 400)
+        noteWindow:SetSize(WowPostItDB.windowSize and WowPostItDB.windowSize.width or 600,
+                          WowPostItDB.windowSize and WowPostItDB.windowSize.height or 400)
         noteWindow:SetPoint(WowPostItDB.windowPosition.point or "CENTER", WowPostItDB.windowPosition.x or 0, WowPostItDB.windowPosition.y or 0)
         noteWindow:SetMovable(true)
+        noteWindow:SetResizable(true)
         noteWindow:SetClampedToScreen(true)
         noteWindow:EnableMouse(true)
+        -- SetMinResize/SetMaxResize는 Classic에서 지원하지 않으므로 직접 제한 구현
+        noteWindow.minWidth = 400
+        noteWindow.minHeight = 300
+        noteWindow.maxWidth = 1200
+        noteWindow.maxHeight = 800
         noteWindow:RegisterForDrag("LeftButton")
         noteWindow:SetScript("OnDragStart", noteWindow.StartMoving)
         noteWindow:SetScript("OnDragStop", function(self)
             self:StopMovingOrSizing()
             local point, _, _, x, y = self:GetPoint()
             WowPostItDB.windowPosition = {point = point, x = x, y = y}
+        end)
+        noteWindow:SetScript("OnSizeChanged", function(self, width, height)
+            -- 크기 제한 적용
+            local newWidth = math.max(self.minWidth or 400, math.min(self.maxWidth or 1200, width))
+            local newHeight = math.max(self.minHeight or 300, math.min(self.maxHeight or 800, height))
+
+            -- 제한된 크기로 다시 설정 (필요한 경우)
+            if newWidth ~= width or newHeight ~= height then
+                self:SetSize(newWidth, newHeight)
+                return
+            end
+
+            WowPostItDB.windowSize = {width = newWidth, height = newHeight}
+            -- 내부 요소들 크기 조정
+            addon:UpdateWindowLayout()
         end)
         
         -- 타이틀
@@ -229,10 +251,47 @@ function addon:ShowNoteWindow()
         statusText:SetTextColor(0.5, 0.5, 0.5)
         noteWindow.statusText = statusText
         
+        -- 크기 조절 그립 (우측 하단)
+        local resizeGrip = CreateFrame("Button", nil, noteWindow)
+        resizeGrip:SetSize(16, 16)
+        resizeGrip:SetPoint("BOTTOMRIGHT", noteWindow, "BOTTOMRIGHT", -2, 2)
+        resizeGrip:SetNormalTexture("Interface\ChatFrame\UI-ChatIM-SizeGrabber-Up")
+        resizeGrip:SetHighlightTexture("Interface\ChatFrame\UI-ChatIM-SizeGrabber-Highlight")
+        resizeGrip:SetPushedTexture("Interface\ChatFrame\UI-ChatIM-SizeGrabber-Down")
+        resizeGrip:EnableMouse(true)
+        resizeGrip:RegisterForDrag("LeftButton")
+        resizeGrip:SetScript("OnDragStart", function(self)
+            noteWindow:StartSizing("BOTTOMRIGHT")
+        end)
+        resizeGrip:SetScript("OnDragStop", function(self)
+            noteWindow:StopMovingOrSizing()
+        end)
+        resizeGrip:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+            GameTooltip:SetText(L["RESIZE_WINDOW"] or "Resize Window", 1, 1, 1)
+            GameTooltip:AddLine(L["RESIZE_HINT"] or "Click and drag to resize", 0.8, 0.8, 0.8)
+            GameTooltip:Show()
+        end)
+        resizeGrip:SetScript("OnLeave", function(self)
+            GameTooltip:Hide()
+        end)
+        noteWindow.resizeGrip = resizeGrip
+
         -- 닫기 버튼 이벤트
         noteWindow.CloseButton:SetScript("OnClick", function()
             noteWindow:Hide()
         end)
+
+        -- 프레임 참조 저장
+        noteWindow.listFrame = listFrame
+        noteWindow.editFrame = editFrame
+        noteWindow.editScrollFrame = editScrollFrame
+        noteWindow.scrollFrame = scrollFrame
+        noteWindow.newButton = newButton
+        noteWindow.deleteButton = deleteButton
+        noteWindow.deleteAllButton = deleteAllButton
+        noteWindow.chatDropdown = chatDropdown
+        noteWindow.sendButton = sendButton
     end
     
     -- 노트 목록 업데이트
@@ -260,6 +319,61 @@ function addon:ShowNoteWindow()
     end
     
     noteWindow:Show()
+end
+
+-- 윈도우 레이아웃 업데이트
+function addon:UpdateWindowLayout()
+    if not noteWindow then return end
+
+    local width = noteWindow:GetWidth()
+    local height = noteWindow:GetHeight()
+
+    -- 좌측 노트 목록 프레임 크기 조정
+    if noteWindow.listFrame then
+        noteWindow.listFrame:SetHeight(height - 70)
+    end
+
+    -- 스크롤 프레임 크기 조정
+    if noteWindow.scrollFrame then
+        noteWindow.scrollFrame:SetPoint("TOPLEFT", noteWindow.listFrame, "TOPLEFT", 5, -5)
+        noteWindow.scrollFrame:SetPoint("BOTTOMRIGHT", noteWindow.listFrame, "BOTTOMRIGHT", -25, 5)
+    end
+
+    -- 우측 편집 영역 크기 조정
+    if noteWindow.editFrame then
+        noteWindow.editFrame:SetPoint("TOPLEFT", noteWindow.listFrame, "TOPRIGHT", 5, 0)
+        noteWindow.editFrame:SetPoint("BOTTOMRIGHT", noteWindow, "BOTTOMRIGHT", -10, 40)
+    end
+
+    -- 편집 스크롤 프레임 크기 조정
+    if noteWindow.editScrollFrame then
+        noteWindow.editScrollFrame:SetPoint("TOPLEFT", noteWindow.editFrame, "TOPLEFT", 5, -5)
+        noteWindow.editScrollFrame:SetPoint("BOTTOMRIGHT", noteWindow.editFrame, "BOTTOMRIGHT", -25, 5)
+    end
+
+    -- 편집 박스 크기 조정
+    if noteEditBox then
+        local editWidth = width - 230  -- 좌측 패널(180) + 여백들
+        local editHeight = height - 80
+        noteEditBox:SetSize(editWidth, editHeight)
+    end
+
+    -- 버튼들 위치 재조정
+    if noteWindow.newButton then
+        noteWindow.newButton:SetPoint("BOTTOMLEFT", noteWindow, "BOTTOMLEFT", 15, 10)
+    end
+    if noteWindow.deleteButton then
+        noteWindow.deleteButton:SetPoint("BOTTOMLEFT", noteWindow, "BOTTOMLEFT", 100, 10)
+    end
+    if noteWindow.deleteAllButton then
+        noteWindow.deleteAllButton:SetPoint("BOTTOMLEFT", noteWindow, "BOTTOMLEFT", 185, 10)
+    end
+    if noteWindow.chatDropdown then
+        noteWindow.chatDropdown:SetPoint("BOTTOMRIGHT", noteWindow, "BOTTOMRIGHT", -185, 7)
+    end
+    if noteWindow.sendButton then
+        noteWindow.sendButton:SetPoint("BOTTOMRIGHT", noteWindow, "BOTTOMRIGHT", -100, 10)
+    end
 end
 
 -- 노트 목록 업데이트

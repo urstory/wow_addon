@@ -15,6 +15,10 @@ local defaults = {
         x = 0,
         y = 0,
     },
+    windowSize = {
+        width = 600,
+        height = 400,
+    },
 }
 
 -- 전역 변수

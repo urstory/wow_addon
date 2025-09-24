@@ -320,7 +320,6 @@ initFrame:SetScript("OnEvent", function(self, event)
     if event == "PLAYER_LOGIN" then
         -- 한 번만 실행되도록
         self:UnregisterEvent("PLAYER_LOGIN")
-        local L = addon.L
-        print(L["ADDON_LOADED"])
+        -- 메시지 출력 제거 (Commands.lua에서 한 번만 출력)
     end
 end)

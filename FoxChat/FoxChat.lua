@@ -43,12 +43,32 @@ local defaults = {
     toastPosition = {
         x = 0,  -- X축 오프셋 (0 = 중앙)
         y = -320,  -- Y축 오프셋 (기본값 -320)
-    }
+    },
+    -- 광고 설정
+    adEnabled = false,  -- 광고 기능 활성화
+    adMessage = "",  -- 광고 메시지
+    adPosition = {
+        x = 350,  -- X축 오프셋 (기본 350)
+        y = -150,  -- Y축 오프셋 (기본 -150)
+    },
+    adCooldown = 30,  -- 광고 버튼 쿨다운 (초, 기본 30초)
+    adChannel = "파티찾기",  -- 광고 채널 (기본 파티찾기)
+    partyMaxSize = 5,  -- 구하는 파티원 수 (기본 5명)
+    autoStopAtFull = true,  -- 목표 인원 도달 시 자동 중지
+    -- 선입 설정
+    firstComeEnabled = false,  -- 선입 메시지 알림 활성화 상태
+    firstComeMessage = "",  -- 선입 메시지
+    firstComeCooldown = 5,  -- 선입 버튼 쿨다운 (초, 기본 5초)
 }
 
 -- 키워드 테이블 (빠른 검색을 위해)
 local keywords = {}
 local ignoreKeywords = {}
+
+-- 유틸리티 함수: 문자열이 비어있거나 공백만 있는지 확인
+local function IsEmptyOrWhitespace(str)
+    return not str or string.gsub(str, "%s+", "") == ""
+end
 
 -- 디버그 모드
 local debugMode = false
@@ -64,19 +84,35 @@ local authorCooldowns = {}  -- 사용자별 쿨다운 추적
 local MAX_TOASTS = 3    -- 최대 토스트 개수
 local ShowToast  -- forward declaration
 
+-- 광고 시스템
+local adButton = nil  -- 광고 버튼
+local adCooldownTimer = nil  -- 광고 쿨다운 타이머
+local adLastClickTime = 0  -- 마지막 광고 클릭 시간
+
 -- 키워드 파싱 함수
-local function ParseKeywords(keywordString, targetTable)
+local function ParseKeywords(keywordData, targetTable)
     wipe(targetTable)
-    if not keywordString or keywordString == "" then
+    if not keywordData then
         return
     end
 
-    -- 쉼표로 분리하고 공백 제거
-    for keyword in string.gmatch(keywordString, "[^,]+") do
-        keyword = string.trim(keyword)
-        if keyword ~= "" then
-            -- 대소문자 구분 없이 저장
-            targetTable[string.lower(keyword)] = keyword
+    -- 테이블인 경우
+    if type(keywordData) == "table" then
+        for _, keyword in ipairs(keywordData) do
+            if keyword and keyword ~= "" then
+                -- 대소문자 구분 없이 저장
+                targetTable[string.lower(keyword)] = keyword
+            end
+        end
+    -- 문자열인 경우
+    elseif type(keywordData) == "string" and keywordData ~= "" then
+        -- 쉼표로 분리하고 공백 제거
+        for keyword in string.gmatch(keywordData, "[^,]+") do
+            keyword = string.trim(keyword)
+            if keyword ~= "" then
+                -- 대소문자 구분 없이 저장
+                targetTable[string.lower(keyword)] = keyword
+            end
         end
     end
 end
@@ -319,9 +355,11 @@ end
 
 -- 채널 타입을 그룹으로 매핑
 local function GetChannelGroup(channelType, channelName)
-    if channelType == "GUILD" then
+    if channelType == "GUILD" or channelType == "OFFICER" then
         return "GUILD"
-    elseif channelType == "PARTY" or channelType == "RAID" or channelType == "INSTANCE_CHAT" or channelType == "RAID_LEADER" or channelType == "RAID_WARNING" then
+    elseif channelType == "PARTY" or channelType == "PARTY_LEADER" or
+           channelType == "RAID" or channelType == "RAID_LEADER" or
+           channelType == "RAID_WARNING" or channelType == "INSTANCE_CHAT" then
         return "PARTY_RAID"
     elseif channelType == "CHANNEL" and channelName then
         -- LFG 채널 체크 (영어 및 한국어)
@@ -333,6 +371,7 @@ local function GetChannelGroup(channelType, channelName)
     elseif channelType == "SAY" or channelType == "YELL" then
         return "PUBLIC"
     end
+    -- WHISPER, LOOT, SYSTEM 등은 nil 반환 (필터링 대상 아님)
     return nil
 end
 
@@ -369,7 +408,7 @@ local function HighlightKeywords(message, channelGroup, author)
     
     -- 플레이어 링크 패턴 찾기: |Hplayer:이름...|h[이름]|h 형태
     local colonPos = nil
-    
+
     -- |h] 다음에 오는 |h: 패턴 찾기
     local linkEnd = string.find(message, "|h%]|h:", 1, false)
     if linkEnd then
@@ -391,15 +430,78 @@ local function HighlightKeywords(message, channelGroup, author)
             end
         end
     end
-    
+
     if colonPos then
         -- 콜론 이전 부분 (플레이어 이름 등)과 이후 부분 (실제 메시지) 분리
         prefix = string.sub(message, 1, colonPos)
         msgContent = string.sub(message, colonPos + 1)
     end
-    
+
+    -- 현재 플레이어 이름 가져오기 (서버명 제거)
+    local myName = UnitName("player")
+    local myNameLower = string.lower(myName)
+
+    -- 작성자가 본인인지 확인 (서버명 제거하여 비교)
+    local isMyMessage = false
+    if author then
+        local authorClean = string.gsub(author, "%-[^%-]+$", "")  -- 서버명 제거
+        local authorLower = string.lower(authorClean)
+
+        if authorLower == myNameLower then
+            isMyMessage = true
+
+            -- 본인이 쓴 메시지는 필터링하지 않음
+            return message, false
+        end
+    end
+
+    -- 말머리와 말꼬리를 메시지 내용에서 제거하여 필터링 체크
+    local msgContentForCheck = msgContent
+    local originalMsgContent = msgContent  -- 디버그용
+
+    if FoxChatDB.prefixSuffixEnabled then
+        local myPrefix = FoxChatDB.prefix or ""
+        local mySuffix = FoxChatDB.suffix or ""
+
+        -- 메시지 시작 부분이 말머리와 일치하면 제거 (공백 포함하여 비교)
+        if myPrefix ~= "" then
+            -- 메시지 앞의 공백 제거
+            local trimmedMsg = string.gsub(msgContentForCheck, "^%s*", "")
+            -- 말머리와 정확히 일치하는지 확인
+            if string.sub(trimmedMsg, 1, string.len(myPrefix)) == myPrefix then
+                msgContentForCheck = string.sub(trimmedMsg, string.len(myPrefix) + 1)
+                -- 말머리 뒤의 공백도 제거
+                msgContentForCheck = string.gsub(msgContentForCheck, "^%s*", "")
+
+                if debugMode then
+                    print(string.format("[FoxChat Debug] 말머리 제거: '%s' -> '%s'", originalMsgContent, msgContentForCheck))
+                end
+            end
+        end
+
+        -- 메시지 끝 부분이 말꼬리와 일치하면 제거 (공백 포함하여 비교)
+        if mySuffix ~= "" then
+            -- 메시지 끝의 공백 제거
+            local trimmedMsg = string.gsub(msgContentForCheck, "%s*$", "")
+            -- 말꼬리와 정확히 일치하는지 확인
+            if string.sub(trimmedMsg, -string.len(mySuffix)) == mySuffix then
+                msgContentForCheck = string.sub(trimmedMsg, 1, -string.len(mySuffix) - 1)
+                -- 말꼬리 앞의 공백도 제거
+                msgContentForCheck = string.gsub(msgContentForCheck, "%s*$", "")
+
+                if debugMode then
+                    print(string.format("[FoxChat Debug] 말꼬리 제거: '%s' -> '%s'", originalMsgContent, msgContentForCheck))
+                end
+            end
+        end
+
+        if debugMode and (myPrefix ~= "" or mySuffix ~= "") then
+            print(string.format("[FoxChat Debug] 최종 필터링 텍스트: '%s'", msgContentForCheck))
+        end
+    end
+
     local foundKeyword = false
-    local lowerMsgContent = string.lower(msgContent)
+    local lowerMsgContent = string.lower(msgContentForCheck)
 
     -- 먼저 작성자가 무시 키워드와 일치하는지 확인
     local authorLower = author and string.lower(author) or ""
@@ -440,17 +542,17 @@ local function HighlightKeywords(message, channelGroup, author)
     for lowerKeyword, originalKeyword in pairs(keywords) do
         if string.find(lowerMsgContent, lowerKeyword, 1, true) then
             foundKeyword = true
-            
-            -- 키워드를 하이라이트
+
+            -- 키워드를 하이라이트 (원본 msgContent에 적용)
             local pattern = "(" .. string.gsub(originalKeyword, "([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1") .. ")"
             local replacement = ""
-            
+
             local color = (FoxChatDB.highlightColors and FoxChatDB.highlightColors[channelGroup]) or defaults.highlightColors[channelGroup]
             local colorCode = string.format("|cff%02x%02x%02x",
                 math.floor(color.r * 255),
                 math.floor(color.g * 255),
                 math.floor(color.b * 255))
-            
+
             if FoxChatDB.highlightStyle == "bold" then
                 replacement = "|cffffffff%1|r"  -- 흰색 굵은 글씨 효과
             elseif FoxChatDB.highlightStyle == "color" then
@@ -458,7 +560,7 @@ local function HighlightKeywords(message, channelGroup, author)
             else -- both
                 replacement = "|cffffffff" .. colorCode .. "%1|r|r"  -- 색상 + 굵게 (흰색 레이어로 굵게 효과)
             end
-            
+
             -- 대소문자 구분 없이 치환 (메시지 내용 부분만)
             local function replacer(match)
                 return string.gsub(replacement, "%%1", match)
@@ -478,9 +580,9 @@ local function HookChatFrame(chatFrame)
     if not chatFrame or originalAddMessage[chatFrame] then
         return
     end
-    
+
     originalAddMessage[chatFrame] = chatFrame.AddMessage
-    
+
     chatFrame.AddMessage = function(self, text, r, g, b, ...)
         if text and FoxChatDB.filterEnabled then
             -- 메시지에서 채널 타입 추측
@@ -657,6 +759,494 @@ local function HookSendChatMessage()
         -- 원본 함수 호출
         originalSendChatMessage(message, chatType, language, channel)
     end
+end
+
+-- 광고 버튼 생성 함수
+local function CreateAdButton()
+    if adButton then return end
+
+    -- 광고 버튼 프레임
+    adButton = CreateFrame("Button", "FoxChatAdButton", UIParent)
+    adButton:SetSize(60, 60)
+    adButton:SetFrameStrata("HIGH")
+    adButton:SetFrameLevel(100)
+    adButton:EnableMouse(true)
+    adButton:SetMovable(true)
+    adButton:RegisterForClicks("LeftButtonUp", "RightButtonUp")  -- 우클릭도 등록
+    adButton:Hide()  -- 기본적으로 숨김
+
+    -- 버튼 배경 (스피커 아이콘)
+    local icon = adButton:CreateTexture(nil, "ARTWORK")
+    icon:SetPoint("TOPLEFT", 4, -4)
+    icon:SetPoint("BOTTOMRIGHT", -4, 4)
+    icon:SetTexture("Interface\\Icons\\INV_Misc_Horn_01")  -- 나팔 아이콘
+
+    -- 버튼 테두리 (아이콘보다 크게)
+    local border = adButton:CreateTexture(nil, "OVERLAY")
+    border:SetTexture("Interface\\Buttons\\UI-Quickslot2")
+    border:SetPoint("TOPLEFT", -5, 5)
+    border:SetPoint("BOTTOMRIGHT", 5, -5)
+
+    -- 쿨다운 오버레이
+    local cooldown = CreateFrame("Cooldown", nil, adButton, "CooldownFrameTemplate")
+    cooldown:SetAllPoints()
+    cooldown:SetSwipeColor(0, 0, 0, 0.8)
+    adButton.cooldown = cooldown
+
+    -- 위치 업데이트
+    local function UpdateAdButtonPosition()
+        if not FoxChatDB.adPosition then
+            FoxChatDB.adPosition = defaults.adPosition
+        end
+        adButton:ClearAllPoints()
+        adButton:SetPoint("CENTER", UIParent, "CENTER", FoxChatDB.adPosition.x, FoxChatDB.adPosition.y)
+    end
+
+    -- 드래그 기능
+    adButton:RegisterForDrag("LeftButton")
+    adButton.isDragging = false
+
+    adButton:SetScript("OnDragStart", function(self)
+        if IsShiftKeyDown() then
+            self:StartMoving()
+            self.isDragging = true
+        end
+    end)
+
+    adButton:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        self.isDragging = false
+
+        -- 화면 중심 기준 좌표 계산
+        local centerX, centerY = self:GetCenter()
+        local screenWidth = GetScreenWidth()
+        local screenHeight = GetScreenHeight()
+        local x = centerX - (screenWidth / 2)
+        local y = centerY - (screenHeight / 2)
+
+        FoxChatDB.adPosition.x = x
+        FoxChatDB.adPosition.y = y
+
+        -- 다시 위치 설정 (CENTER 기준으로)
+        self:ClearAllPoints()
+        self:SetPoint("CENTER", UIParent, "CENTER", x, y)
+
+        -- 선입 버튼도 업데이트
+        if firstComeButton and firstComeButton:IsVisible() then
+            firstComeButton:ClearAllPoints()
+            firstComeButton:SetPoint("CENTER", UIParent, "CENTER", x + 65, y + 5)
+        end
+
+        -- 설정창 EditBox 업데이트
+        local adXEditBox = _G["FoxChatConfigFrame"] and _G["FoxChatConfigFrame"].adXEditBox
+        local adYEditBox = _G["FoxChatConfigFrame"] and _G["FoxChatConfigFrame"].adYEditBox
+        if adXEditBox then
+            adXEditBox:SetText(tostring(math.floor(x + 0.5)))
+        end
+        if adYEditBox then
+            adYEditBox:SetText(tostring(math.floor(y + 0.5)))
+        end
+    end)
+
+    -- 드래그 중 실시간 업데이트
+    adButton:SetScript("OnUpdate", function(self)
+        if self.isDragging then
+            -- 화면 중심 기준 좌표 계산
+            local centerX, centerY = self:GetCenter()
+            local screenWidth = GetScreenWidth()
+            local screenHeight = GetScreenHeight()
+            local x = centerX - (screenWidth / 2)
+            local y = centerY - (screenHeight / 2)
+
+            FoxChatDB.adPosition.x = x
+            FoxChatDB.adPosition.y = y
+
+            -- 설정창 EditBox 업데이트
+            local adXEditBox = _G["FoxChatConfigFrame"] and _G["FoxChatConfigFrame"].adXEditBox
+            local adYEditBox = _G["FoxChatConfigFrame"] and _G["FoxChatConfigFrame"].adYEditBox
+            if adXEditBox then
+                adXEditBox:SetText(tostring(math.floor(x + 0.5)))
+            end
+            if adYEditBox then
+                adYEditBox:SetText(tostring(math.floor(y + 0.5)))
+            end
+
+            -- 선입 버튼도 함께 이동
+            if firstComeButton and firstComeButton:IsVisible() then
+                firstComeButton:ClearAllPoints()
+                firstComeButton:SetPoint("CENTER", UIParent, "CENTER", x + 65, y + 5)
+            end
+        end
+    end)
+
+    -- 툴팁 이벤트
+    adButton:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("광고 전송", 1, 1, 1)
+        GameTooltip:AddLine("파티찾기 채널에 광고 메시지를 전송합니다.", 0.8, 0.8, 0.8, true)
+        if FoxChatDB.adMessage and FoxChatDB.adMessage ~= "" then
+            GameTooltip:AddLine(" ", 1, 1, 1)
+            GameTooltip:AddLine("메시지:", 1, 0.8, 0)
+            GameTooltip:AddLine(FoxChatDB.adMessage, 0.8, 0.8, 0.8, true)
+        end
+        local cooldownTime = FoxChatDB.adCooldown or 30
+        GameTooltip:AddLine(" ", 1, 1, 1)
+        GameTooltip:AddLine("쿨다운: " .. cooldownTime .. "초", 0.7, 0.7, 0.7)
+        GameTooltip:AddLine(" ", 1, 1, 1)
+        GameTooltip:AddLine("|cFFFF6060우클릭: 광고 중지|r", 1, 1, 1)
+        GameTooltip:Show()
+    end)
+
+    adButton:SetScript("OnLeave", function(self)
+        GameTooltip:Hide()
+    end)
+
+    -- 클릭 이벤트
+    adButton:SetScript("OnClick", function(self, button)
+        -- 우클릭 처리 - 광고 중지
+        if button == "RightButton" then
+            FoxChatDB.adEnabled = false
+            self:Hide()  -- 버튼 숨김
+            -- 쿨다운 초기화
+            if FoxChat and FoxChat.ResetAdCooldown then
+                FoxChat:ResetAdCooldown()
+            end
+            -- 설정창의 버튼도 업데이트
+            local configFrame = _G["FoxChatConfigFrame"]
+            if configFrame and configFrame:IsVisible() then
+                -- 탭 컨텐츠 찾기
+                if configFrame.tab3 and configFrame.tab3.UpdateAdStartButton then
+                    configFrame.tab3.UpdateAdStartButton()
+                end
+            end
+            print("|cFFFF7D0A[FoxChat]|r 광고가 중지되었습니다.")
+            return
+        end
+
+        -- 좌클릭 처리 - 기존 기능
+        if button == "LeftButton" and not adCooldownTimer then
+            -- 파티찾기 채널에 메시지 전송 (광고 메시지 + [선입 메시지] + 파티 정보)
+            local message = FoxChatDB.adMessage or ""
+            if not IsEmptyOrWhitespace(message) then
+                -- 선입 메시지가 있으면 추가
+                local firstComeMessage = FoxChatDB.firstComeMessage or ""
+                if not IsEmptyOrWhitespace(firstComeMessage) then
+                    message = message .. " [" .. firstComeMessage .. "]"
+                end
+
+                -- 파티원수가 0이면 수동 모드 (파티 정보 추가하지 않음)
+                local maxMembers = FoxChatDB.partyMaxSize or 5
+
+                if maxMembers > 0 then
+                    -- 자동 모드: 현재 파티/공격대 인원 확인
+                    local currentMembers = 1  -- 기본값 (나 혼자)
+
+                    if IsInRaid() then
+                        currentMembers = GetNumGroupMembers()  -- 공격대 인원
+                    elseif IsInGroup() then
+                        currentMembers = GetNumGroupMembers()  -- 파티 인원
+                    end
+
+                    -- 메시지에 파티 정보 추가
+                    message = message .. " (" .. currentMembers .. "/" .. maxMembers .. ")"
+                end
+                -- maxMembers가 0이면 메시지를 수정하지 않음 (사용자가 직접 입력)
+            end
+
+            if not IsEmptyOrWhitespace(message) then
+                -- 선택된 채널 찾기
+                local targetChannelName = FoxChatDB.adChannel or "파티찾기"
+                local channels = {GetChannelList()}
+                local targetChannel = nil
+
+                for i = 1, #channels, 3 do
+                    local id, name = channels[i], channels[i+1]
+                    if name then
+                        -- 선택된 채널명과 일치하는지 확인
+                        if string.find(name, targetChannelName) or
+                           (targetChannelName == "파티찾기" and string.find(name, "LookingForGroup")) or
+                           (targetChannelName == "공개" and (string.find(name, "General") or string.find(name, "일반"))) or
+                           (targetChannelName == "거래" and string.find(name, "Trade")) then
+                            targetChannel = id
+                            break
+                        end
+                    end
+                end
+
+                -- 못 찾았으면 기본 채널로 폴백
+                if not targetChannel and targetChannelName == "파티찾기" then
+                    -- 파티찾기 없으면 공개 채널 찾기
+                    for i = 1, #channels, 3 do
+                        local id, name = channels[i], channels[i+1]
+                        if name and (string.find(name, "General") or string.find(name, "일반") or string.find(name, "공개")) then
+                            targetChannel = id
+                            break
+                        end
+                    end
+                end
+
+                if targetChannel then
+                    -- 광고 메시지는 말머리/말꼬리 없이 원본 함수로 전송
+                    originalSendChatMessage(message, "CHANNEL", nil, targetChannel)
+                else
+                    print("|cFFFF7D0A[FoxChat]|r " .. targetChannelName .. " 채널을 찾을 수 없습니다.")
+                end
+
+                -- 쿨다운 적용 (15, 30, 45, 60초 중 선택, 기본 15초)
+                local cooldownTime = FoxChatDB.adCooldown or 30
+                adLastClickTime = GetTime()  -- 마지막 클릭 시간 먼저 업데이트
+                self.cooldown:SetCooldown(adLastClickTime, cooldownTime)
+                self:Hide()
+
+                -- 쿨다운 타이머
+                adCooldownTimer = C_Timer.NewTimer(cooldownTime, function()
+                    adCooldownTimer = nil
+                    if FoxChatDB.adEnabled then
+                        self:Show()
+                    end
+                end)
+            else
+                print("|cFFFF7D0A[FoxChat]|r 광고 메시지를 먼저 설정해주세요.")
+            end
+        end
+    end)
+
+    -- 툴팁
+    adButton:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("광고 전송", 1, 1, 1)
+        GameTooltip:AddLine("클릭: 파티찾기 채널에 광고 전송", 0.8, 0.8, 0.8)
+        GameTooltip:AddLine("Shift+드래그: 위치 이동", 0.8, 0.8, 0.8)
+        GameTooltip:Show()
+    end)
+
+    adButton:SetScript("OnLeave", function(self)
+        GameTooltip:Hide()
+    end)
+
+    UpdateAdButtonPosition()
+end
+
+-- 선입 버튼 생성 함수
+local function CreateFirstComeButton()
+    if firstComeButton then return end
+
+    -- 선입외치기 버튼 프레임 (아이콘 스타일)
+    firstComeButton = CreateFrame("Button", "FoxChatFirstComeButton", UIParent)
+    firstComeButton:SetSize(50, 50)  -- 아이콘 크기
+    firstComeButton:SetFrameStrata("HIGH")
+    firstComeButton:SetFrameLevel(101)
+    firstComeButton:EnableMouse(true)
+    firstComeButton:SetMovable(false)
+    firstComeButton:RegisterForClicks("LeftButtonUp", "RightButtonUp")  -- 우클릭도 등록
+    firstComeButton:Hide()  -- 기본적으로 숨김
+
+    -- 버튼 배경 (스피커 아이콘)
+    local icon = firstComeButton:CreateTexture(nil, "ARTWORK")
+    icon:SetPoint("TOPLEFT", 4, -4)
+    icon:SetPoint("BOTTOMRIGHT", -4, 4)
+    icon:SetTexture("Interface\\Icons\\Spell_Holy_Silence")  -- 스피커 아이콘
+
+    -- 버튼 테두리
+    local border = firstComeButton:CreateTexture(nil, "OVERLAY")
+    border:SetTexture("Interface\\Buttons\\UI-Quickslot2")
+    border:SetPoint("TOPLEFT", -5, 5)
+    border:SetPoint("BOTTOMRIGHT", 5, -5)
+
+    -- 쿨다운 오버레이
+    local cooldown = CreateFrame("Cooldown", nil, firstComeButton, "CooldownFrameTemplate")
+    cooldown:SetAllPoints()
+    cooldown:SetSwipeColor(0, 0, 0, 0.8)
+    firstComeButton.cooldown = cooldown
+
+    -- 툴팁 이벤트
+    firstComeButton:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("선입외치기", 1, 1, 1)
+        GameTooltip:AddLine("파티/공격대원에게 선입 메시지를 전송합니다.", 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine("파티: /파로 전송", 0.6, 0.6, 0.6, true)
+        GameTooltip:AddLine("공격대: /경보로 전송 (권한 있을 시) 또는 /공", 0.6, 0.6, 0.6, true)
+        if FoxChatDB.firstComeMessage and FoxChatDB.firstComeMessage ~= "" then
+            GameTooltip:AddLine(" ", 1, 1, 1)
+            GameTooltip:AddLine("메시지:", 1, 0.8, 0)
+            GameTooltip:AddLine(FoxChatDB.firstComeMessage, 0.8, 0.8, 0.8, true)
+        end
+        GameTooltip:AddLine(" ", 1, 1, 1)
+        GameTooltip:AddLine("|cFFFF6060우클릭: 선입 알림 비활성화|r", 1, 1, 1)
+        GameTooltip:Show()
+    end)
+
+    firstComeButton:SetScript("OnLeave", function(self)
+        GameTooltip:Hide()
+    end)
+
+    -- 클릭 이벤트
+    firstComeButton:SetScript("OnClick", function(self, button)
+        if IsShiftKeyDown() then return end  -- Shift 클릭은 무시
+
+        -- 우클릭 처리 - 선입 알림 비활성화
+        if button == "RightButton" then
+            FoxChatDB.firstComeEnabled = false
+            self:Hide()  -- 버튼 직접 숨김
+            -- 설정창의 버튼도 업데이트
+            local configFrame = _G["FoxChatConfigFrame"]
+            if configFrame and configFrame:IsVisible() then
+                -- 탭 컨텐츠 찾기
+                if configFrame.tab3 and configFrame.tab3.UpdateFirstComeStartButton then
+                    configFrame.tab3.UpdateFirstComeStartButton()
+                end
+            end
+            print("|cFFFF7D0A[FoxChat]|r 선입 메시지 알림이 비활성화되었습니다.")
+            return
+        end
+
+        -- 좌클릭 처리 - 기존 기능
+
+        -- 선입 메시지가 있는지 확인
+        local message = FoxChatDB.firstComeMessage
+        if not message or IsEmptyOrWhitespace(message) then
+            print("|cFFFF7D0A[FoxChat]|r 선입 메시지가 설정되지 않았습니다.")
+            return
+        end
+
+        -- 파티 또는 공격대 확인
+        local channel = nil
+        if IsInRaid() then
+            -- 공격대 리더나 승급자인지 확인 (Classic 호환)
+            local isLeaderOrAssistant = false
+
+            -- 방법 1: UnitIsGroupLeader와 UnitIsGroupAssistant 사용 (더 최신 API)
+            if UnitIsGroupLeader and UnitIsGroupLeader("player") then
+                isLeaderOrAssistant = true
+            elseif UnitIsGroupAssistant and UnitIsGroupAssistant("player") then
+                isLeaderOrAssistant = true
+            else
+                -- 방법 2: GetRaidRosterInfo 사용 (Classic 호환)
+                for i = 1, GetNumGroupMembers() do
+                    local name, rank = GetRaidRosterInfo(i)
+                    if name == UnitName("player") then
+                        if rank >= 1 then  -- rank 2 = 리더, rank 1 = 승급자
+                            isLeaderOrAssistant = true
+                        end
+                        break
+                    end
+                end
+            end
+
+            if isLeaderOrAssistant then
+                channel = "RAID_WARNING"  -- 공격대에서는 /경보 (공격대 경보)
+            else
+                channel = "RAID"  -- 권한이 없으면 /공 (공격대 채팅)
+            end
+        elseif IsInGroup() then
+            channel = "PARTY"  -- 파티에서는 /파 (파티 채팅)
+        else
+            print("|cFFFF7D0A[FoxChat]|r 파티나 공격대에 속해있지 않습니다.")
+            return
+        end
+
+        -- 메시지 전송
+        SendChatMessage(message, channel)
+
+        -- 쿨다운 설정
+        local cooldownTime = FoxChatDB.firstComeCooldown or 5
+        firstComeLastClickTime = GetTime()
+        self.cooldown:SetCooldown(firstComeLastClickTime, cooldownTime)
+
+        -- 쿨다운 타이머 설정
+        if firstComeCooldownTimer then
+            firstComeCooldownTimer:Cancel()
+        end
+        firstComeCooldownTimer = C_Timer.NewTimer(cooldownTime, function()
+            firstComeCooldownTimer = nil
+        end)
+    end)
+end
+
+-- 선입 버튼 위치 및 표시 업데이트
+local function UpdateFirstComeButton()
+    if not firstComeButton then
+        CreateFirstComeButton()
+    end
+
+    -- 선입 메시지 알림이 활성화되어 있고, 선입 메시지가 있을 때 표시 (파티/공격대 여부와 무관)
+    if FoxChatDB.firstComeEnabled
+       and FoxChatDB.firstComeMessage and not IsEmptyOrWhitespace(FoxChatDB.firstComeMessage) then
+
+        -- 광고 버튼의 위치를 기준으로 선입 버튼 위치 설정
+        if not FoxChatDB.adPosition then
+            FoxChatDB.adPosition = defaults.adPosition
+        end
+
+        firstComeButton:ClearAllPoints()
+        -- 광고 버튼의 위치에서 우측으로 65 픽셀 떨어진 곳에 배치 (아이콘 크기 조정)
+        firstComeButton:SetPoint("CENTER", UIParent, "CENTER",
+                                FoxChatDB.adPosition.x + 65,
+                                FoxChatDB.adPosition.y + 5)  -- 약간 위로 조정
+        firstComeButton:Show()
+    else
+        firstComeButton:Hide()
+    end
+end
+
+-- 광고 버튼 표시/숨김
+local function UpdateAdButton()
+    if not adButton then
+        CreateAdButton()
+    end
+
+    -- 위치 업데이트
+    if adButton then
+        if not FoxChatDB.adPosition then
+            FoxChatDB.adPosition = defaults.adPosition
+        end
+        adButton:ClearAllPoints()
+        adButton:SetPoint("CENTER", UIParent, "CENTER", FoxChatDB.adPosition.x, FoxChatDB.adPosition.y)
+    end
+
+    -- 자동 중지 기능 제거 - 목표 인원 체크 없이 광고 계속 가능
+
+    if FoxChatDB.adEnabled and FoxChatDB.adMessage and not IsEmptyOrWhitespace(FoxChatDB.adMessage) then
+        -- 쿨다운 체크 (마지막 클릭 시간이 0보다 클 때만)
+        if adLastClickTime > 0 then
+            local currentTime = GetTime()
+            local cooldownTime = FoxChatDB.adCooldown or 30
+            local timeSinceLastClick = currentTime - adLastClickTime
+
+            if timeSinceLastClick >= cooldownTime then
+                -- 쿨다운이 끝난 경우
+                if adCooldownTimer then
+                    adCooldownTimer:Cancel()
+                    adCooldownTimer = nil
+                end
+                adButton:Show()
+            else
+                -- 아직 쿨다운 중인 경우
+                adButton:Hide()
+                if not adCooldownTimer then
+                    local remainingTime = cooldownTime - timeSinceLastClick
+                    adCooldownTimer = C_Timer.NewTimer(remainingTime, function()
+                        adCooldownTimer = nil
+                        if FoxChatDB.adEnabled then
+                            adButton:Show()
+                        end
+                    end)
+                    -- 쿨다운 UI 업데이트
+                    if adButton.cooldown then
+                        adButton.cooldown:SetCooldown(adLastClickTime, cooldownTime)
+                    end
+                end
+            end
+        else
+            -- 쿨다운이 없는 경우 (처음 시작하거나 초기화된 경우)
+            adButton:Show()
+        end
+    else
+        adButton:Hide()
+    end
+
+    -- 광고 버튼 위치가 변경될 때 선입 버튼도 업데이트
+    UpdateFirstComeButton()
 end
 
 -- 미니맵 버튼 생성
@@ -849,10 +1439,21 @@ local function CreateMinimapButton()
     UpdateMinimapPosition()
 end
 
+-- 그룹 상태 변경 이벤트 처리
+local function OnGroupRosterUpdate()
+    -- 광고 버튼 업데이트
+    UpdateAdButton()
+    -- 선입 버튼 업데이트
+    if UpdateFirstComeButton then
+        UpdateFirstComeButton()
+    end
+end
+
 -- 초기화
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
+frame:RegisterEvent("GROUP_ROSTER_UPDATE")
 
 frame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
@@ -881,7 +1482,12 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if not FoxChatDB.toastPosition then
             FoxChatDB.toastPosition = defaults.toastPosition
         end
-        
+
+        -- adPosition 테이블 확인 및 초기화
+        if not FoxChatDB.adPosition then
+            FoxChatDB.adPosition = defaults.adPosition
+        end
+
         -- 키워드 파싱
         UpdateKeywords()
         UpdateIgnoreKeywords()
@@ -905,20 +1511,34 @@ frame:SetScript("OnEvent", function(self, event, arg1)
             end
         end)
         
-        -- 채팅 필터 등록
+        -- 채팅 필터 등록 (플레이어 대화만 필터링, 시스템 메시지 제외)
         ChatFrame_AddMessageEventFilter("CHAT_MSG_SAY", ChatFilter)
         ChatFrame_AddMessageEventFilter("CHAT_MSG_YELL", ChatFilter)
         ChatFrame_AddMessageEventFilter("CHAT_MSG_PARTY", ChatFilter)
+        ChatFrame_AddMessageEventFilter("CHAT_MSG_PARTY_LEADER", ChatFilter)
         ChatFrame_AddMessageEventFilter("CHAT_MSG_GUILD", ChatFilter)
+        ChatFrame_AddMessageEventFilter("CHAT_MSG_OFFICER", ChatFilter)
         ChatFrame_AddMessageEventFilter("CHAT_MSG_RAID", ChatFilter)
+        ChatFrame_AddMessageEventFilter("CHAT_MSG_RAID_LEADER", ChatFilter)
+        ChatFrame_AddMessageEventFilter("CHAT_MSG_RAID_WARNING", ChatFilter)
         ChatFrame_AddMessageEventFilter("CHAT_MSG_INSTANCE_CHAT", ChatFilter)
-        ChatFrame_AddMessageEventFilter("CHAT_MSG_WHISPER", ChatFilter)
         ChatFrame_AddMessageEventFilter("CHAT_MSG_CHANNEL", ChatFilter)
+        -- 귓속말은 제외 (WHISPER 이벤트 제거)
         
         -- 미니맵 버튼 생성
         CreateMinimapButton()
-        
+
+        -- 광고 버튼 생성 및 업데이트
+        CreateAdButton()
+        UpdateAdButton()
+
+        -- 선입 버튼 생성 및 업데이트
+        CreateFirstComeButton()
+        UpdateFirstComeButton()
+
         print(L["ADDON_LOADED"])
+    elseif event == "GROUP_ROSTER_UPDATE" then
+        OnGroupRosterUpdate()
     end
 end)
 
@@ -929,6 +1549,25 @@ end
 
 -- ShowToast 함수를 FoxChat 테이블에 추가
 FoxChat.ShowToast = ShowToast
+
+-- UpdateAdButton 함수를 FoxChat 테이블에 추가
+FoxChat.UpdateAdButton = UpdateAdButton
+FoxChat.UpdateFirstComeButton = UpdateFirstComeButton
+
+-- 광고 쿨다운 초기화 함수
+function FoxChat:ResetAdCooldown()
+    -- 쿨다운 타이머 취소
+    if adCooldownTimer then
+        adCooldownTimer:Cancel()
+        adCooldownTimer = nil
+    end
+    -- 마지막 클릭 시간 초기화
+    adLastClickTime = 0
+    -- 광고 버튼 쿨다운 UI 초기화
+    if adButton and adButton.cooldown then
+        adButton.cooldown:Clear()
+    end
+end
 
 function FoxChat:UpdateIgnoreKeywords()
     UpdateIgnoreKeywords()
