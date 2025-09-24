@@ -212,17 +212,25 @@ function addon:ShowNoteWindow()
         editFrame:SetPoint("BOTTOMRIGHT", noteWindow, "BOTTOMRIGHT", -10, 40)
 
         -- 잠금/해제 버튼 (우측 상단 - 스크롤바 왼쪽)
-        local lockButton = CreateFrame("CheckButton", nil, editFrame)  -- CheckButton으로 변경
-        lockButton:SetSize(16, 16)  -- 체크박스 크기와 동일하게
-        lockButton:SetPoint("TOPRIGHT", editFrame, "TOPRIGHT", -30, -8)  -- 스크롤바를 피해 왼쪽으로 이동
+        local lockButton = CreateFrame("Button", nil, editFrame)  -- Button으로 변경
+        lockButton:SetSize(24, 24)  -- 아이콘이 잘 보이도록 크기 조정
+        lockButton:SetPoint("TOPRIGHT", editFrame, "TOPRIGHT", -28, -6)  -- 스크롤바를 피해 왼쪽으로 이동
         lockButton:SetFrameLevel(editFrame:GetFrameLevel() + 5)  -- 더 높은 레벨로 설정
 
         -- 잠금 상태 변수
         noteWindow.isLocked = false
 
+        -- 버튼 배경 (선택사항 - 버튼처럼 보이게 하려면)
+        local buttonBg = lockButton:CreateTexture(nil, "BACKGROUND")
+        buttonBg:SetAllPoints()
+        buttonBg:SetTexture("Interface\\Tooltips\\UI-Tooltip-Background")
+        buttonBg:SetVertexColor(0, 0, 0, 0.2)  -- 약간의 어두운 배경
+        lockButton.bg = buttonBg
+
         -- 커스텀 열쇠 아이콘
         local lockIcon = lockButton:CreateTexture(nil, "ARTWORK")
-        lockIcon:SetAllPoints()
+        lockIcon:SetSize(22, 22)  -- 버튼보다 약간 작게
+        lockIcon:SetPoint("CENTER", lockButton, "CENTER", 0, 0)
         -- 초기 상태: 열린 자물쇠 (편집 가능)
         lockIcon:SetTexture("Interface\\AddOns\\WowPostIt\\k1.png")
         lockButton.icon = lockIcon
@@ -230,8 +238,11 @@ function addon:ShowNoteWindow()
         -- 하이라이트 효과
         lockButton:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
 
-        -- 버튼 툴팁
+        -- 버튼 툴팁 및 마우스 오버 효과
         lockButton:SetScript("OnEnter", function(self)
+            -- 마우스 오버 시 배경 밝게
+            self.bg:SetVertexColor(0.3, 0.3, 0.3, 0.3)
+
             GameTooltip:SetOwner(self, "ANCHOR_LEFT")
             if noteWindow.isLocked then
                 GameTooltip:SetText(L["UNLOCK_EDIT"] or "편집 잠금 해제", 1, 1, 1)
@@ -244,6 +255,8 @@ function addon:ShowNoteWindow()
         end)
 
         lockButton:SetScript("OnLeave", function(self)
+            -- 마우스가 벗어나면 원래 배경색으로
+            self.bg:SetVertexColor(0, 0, 0, 0.2)
             GameTooltip:Hide()
         end)
 
