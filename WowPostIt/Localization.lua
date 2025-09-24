@@ -48,6 +48,14 @@ local L = {
     -- 정보
     ["CREATED"] = "Created",
     ["MODIFIED"] = "Modified",
+
+    -- 편집 잠금
+    ["LOCK_EDIT"] = "Lock Edit",
+    ["UNLOCK_EDIT"] = "Unlock Edit",
+    ["LOCK_EDIT_DESC"] = "Click to disable editing",
+    ["UNLOCK_EDIT_DESC"] = "Click to enable editing",
+    ["EDIT_LOCKED"] = "Editing locked",
+    ["EDIT_UNLOCKED"] = "Editing unlocked",
 }
 
 -- 한국어 번역
@@ -100,6 +108,14 @@ if locale == "koKR" then
         -- 정보
         ["CREATED"] = "생성일",
         ["MODIFIED"] = "수정일",
+
+        -- 편집 잠금
+        ["LOCK_EDIT"] = "편집 잠금",
+        ["UNLOCK_EDIT"] = "편집 잠금 해제",
+        ["LOCK_EDIT_DESC"] = "클릭하여 편집을 비활성화합니다",
+        ["UNLOCK_EDIT_DESC"] = "클릭하여 편집을 활성화합니다",
+        ["EDIT_LOCKED"] = "편집이 잠겼습니다",
+        ["EDIT_UNLOCKED"] = "편집이 해제되었습니다",
     }
 end
 

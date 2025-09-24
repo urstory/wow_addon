@@ -210,6 +210,66 @@ function addon:ShowNoteWindow()
         local editFrame = CreateFrame("Frame", nil, noteWindow, "InsetFrameTemplate")
         editFrame:SetPoint("TOPLEFT", listFrame, "TOPRIGHT", 5, 0)
         editFrame:SetPoint("BOTTOMRIGHT", noteWindow, "BOTTOMRIGHT", -10, 40)
+
+        -- 잠금/해제 버튼 (우측 상단 - 스크롤바 왼쪽)
+        local lockButton = CreateFrame("CheckButton", nil, editFrame)  -- CheckButton으로 변경
+        lockButton:SetSize(16, 16)  -- 체크박스 크기와 동일하게
+        lockButton:SetPoint("TOPRIGHT", editFrame, "TOPRIGHT", -30, -8)  -- 스크롤바를 피해 왼쪽으로 이동
+        lockButton:SetFrameLevel(editFrame:GetFrameLevel() + 5)  -- 더 높은 레벨로 설정
+
+        -- 잠금 상태 변수
+        noteWindow.isLocked = false
+
+        -- 커스텀 열쇠 아이콘
+        local lockIcon = lockButton:CreateTexture(nil, "ARTWORK")
+        lockIcon:SetAllPoints()
+        -- 초기 상태: 열린 자물쇠 (편집 가능)
+        lockIcon:SetTexture("Interface\\AddOns\\WowPostIt\\k1.png")
+        lockButton.icon = lockIcon
+
+        -- 하이라이트 효과
+        lockButton:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+
+        -- 버튼 툴팁
+        lockButton:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+            if noteWindow.isLocked then
+                GameTooltip:SetText(L["UNLOCK_EDIT"] or "편집 잠금 해제", 1, 1, 1)
+                GameTooltip:AddLine(L["UNLOCK_EDIT_DESC"] or "클릭하여 편집을 활성화합니다", 0.8, 0.8, 0.8)
+            else
+                GameTooltip:SetText(L["LOCK_EDIT"] or "편집 잠금", 1, 1, 1)
+                GameTooltip:AddLine(L["LOCK_EDIT_DESC"] or "클릭하여 편집을 비활성화합니다", 0.8, 0.8, 0.8)
+            end
+            GameTooltip:Show()
+        end)
+
+        lockButton:SetScript("OnLeave", function(self)
+            GameTooltip:Hide()
+        end)
+
+        -- 버튼 클릭 이벤트
+        lockButton:SetScript("OnClick", function(self)
+            noteWindow.isLocked = not noteWindow.isLocked
+
+            if noteWindow.isLocked then
+                -- 잠긴 상태
+                self.icon:SetTexture("Interface\\AddOns\\WowPostIt\\k2.png")  -- 닫힌 자물쇠 아이콘
+                noteEditBox:EnableMouse(false)
+                noteEditBox:EnableKeyboard(false)
+                -- noteEditBox:SetTextColor(0.5, 0.5, 0.5)  -- 텍스트 색상 변경 제거
+                noteEditBox:ClearFocus()
+                print("|cFFFFFF00WowPostIt:|r " .. (L["EDIT_LOCKED"] or "편집이 잠겼습니다"))
+            else
+                -- 해제 상태
+                self.icon:SetTexture("Interface\\AddOns\\WowPostIt\\k1.png")  -- 열린 자물쇠 아이콘
+                noteEditBox:EnableMouse(true)
+                noteEditBox:EnableKeyboard(true)
+                -- noteEditBox:SetTextColor(1, 1, 1)  -- 텍스트 색상 변경 제거
+                print("|cFFFFFF00WowPostIt:|r " .. (L["EDIT_UNLOCKED"] or "편집이 해제되었습니다"))
+            end
+        end)
+
+        noteWindow.lockButton = lockButton
         
         -- 스크롤 가능한 편집 박스
         local editScrollFrame = CreateFrame("ScrollFrame", "WowPostItEditScroll", editFrame, "UIPanelScrollFrameTemplate")
@@ -528,7 +588,7 @@ function addon:UpdateNoteList()
                     1.0
                 )
             end
-            
+
             -- 현재 버튼 진하게
             self.bg:SetVertexColor(
                 self.noteColor[1] * 0.75,
@@ -536,7 +596,7 @@ function addon:UpdateNoteList()
                 self.noteColor[3] * 0.75,
                 1.0
             )
-            
+
             -- 편집 영역 배경색 변경 (부드럽게)
             if noteEditBox.bg then
                 noteEditBox.bg:SetVertexColor(
@@ -546,11 +606,21 @@ function addon:UpdateNoteList()
                     0.5
                 )
             end
-            
+
             -- 노트 내용 로드
             currentNoteId = note.id
             WowPostItDB.selectedNoteId = currentNoteId
             noteEditBox:SetText(note.content)
+
+            -- 잠금 상태 해제
+            if noteWindow.isLocked then
+                noteWindow.isLocked = false
+                noteWindow.lockButton.icon:SetTexture("Interface\\AddOns\\WowPostIt\\k1.png")  -- 열린 자물쇠 아이콘
+                noteEditBox:EnableMouse(true)
+                noteEditBox:EnableKeyboard(true)
+                -- noteEditBox:SetTextColor(1, 1, 1)  -- 텍스트 색상 변경 제거
+            end
+
             noteEditBox:SetFocus()
         end)
         
