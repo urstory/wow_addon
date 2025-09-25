@@ -23,7 +23,11 @@ A World of Warcraft Classic addon for chat message filtering and highlighting wi
   - First Come message feature for quick party announcements
   - Party size management with auto-stop option
   - Configurable cooldowns and channel selection
-- **Tab-based UI**: Modern, organized settings interface with three tabs
+- **Tab-based UI**: Modern, organized settings interface with four tabs
+- **Auto Features**:
+  - Trade completion messages with automatic whisper
+  - Party auto-greeting with random message selection
+  - Auto repair alerts
 - **Localization**: Full support for English and Korean
 
 ## Installation
@@ -52,7 +56,7 @@ A World of Warcraft Classic addon for chat message filtering and highlighting wi
 
 ### Settings Window (Tab UI)
 
-The new tab-based interface includes three sections:
+The new tab-based interface includes four sections:
 
 #### Tab 1: Chat Filtering
 - Configure keywords (comma-separated)
@@ -74,6 +78,15 @@ The new tab-based interface includes three sections:
 - Select cooldown duration (15/30/45/60 seconds)
 - Choose target channel (automatic channel list)
 - Start/stop advertising
+- Fixed bug with party participant count display format
+
+#### Tab 4: Auto Features
+- **Trade Completion Messages**: Automatically sends whisper with trade details after successful trades
+- **Party Auto-Greeting**:
+  - Sends random greeting when you join a party
+  - Sends random greeting when others join your party
+  - Customizable greeting messages for both scenarios
+- **Auto Repair Alert**: Notifies when equipment durability is low
 
 ## Configuration Options
 
@@ -116,7 +129,11 @@ The new tab-based interface includes three sections:
 - **미니맵 버튼**: 필터 전환 및 설정창 열기 빠른 접근
 - **다중 채널 지원**: 여러 채팅 채널 동시 모니터링
 - **광고 시스템**: 수동 클릭 필요한 반자동 모집 (EULA 준수)
-- **탭 기반 UI**: 3개 탭으로 구성된 현대적이고 정리된 설정 인터페이스
+- **탭 기반 UI**: 4개 탭으로 구성된 현대적이고 정리된 설정 인터페이스
+- **자동 기능**:
+  - 거래 완료 시 자동 귓속말 메시지
+  - 파티 자동 인사 (랜덤 메시지)
+  - 자동 수리 알림
 - **현지화**: 영어 및 한국어 완벽 지원
 
 ## 설치 방법
@@ -145,7 +162,7 @@ The new tab-based interface includes three sections:
 
 ### 설정창 (탭 UI)
 
-새로운 탭 기반 인터페이스는 세 가지 섹션으로 구성됩니다:
+새로운 탭 기반 인터페이스는 네 가지 섹션으로 구성됩니다:
 
 #### 탭 1: 채팅 필터링
 - 키워드 설정 (쉼표로 구분)
@@ -167,6 +184,15 @@ The new tab-based interface includes three sections:
 - 쿨타임 선택 (15/30/45/60초)
 - 대상 채널 선택 (자동 채널 목록)
 - 광고 시작/중지
+- 파티참여자수/파티원수 표시 버그 수정
+
+#### 탭 4: 자동 기능
+- **거래 완료 메시지**: 거래 성공 후 자동으로 거래 내역 귓속말 전송
+- **파티 자동 인사**:
+  - 파티 참가 시 랜덤 인사 메시지 전송
+  - 다른 사람이 파티 참가 시 랜덤 인사 메시지 전송
+  - 각각 사용자 정의 가능한 인사 메시지
+- **자동 수리 알림**: 장비 내구도가 낮을 때 알림
 
 ## 설정 옵션
 
@@ -210,9 +236,12 @@ The new tab-based interface includes three sections:
 
 ## 버전
 
-- 현재 버전: 2.0
+- 현재 버전: 2.1
 - WoW 클래식 호환
-- 최신 업데이트: 탭 UI 시스템 및 향상된 광고 기능
+- 최신 업데이트:
+  - 자동 탭 추가 (거래 완료 메시지, 파티 자동 인사)
+  - 광고 메시지 파티참여자수 버그 수정
+  - 미니맵 아이콘 초기 위치 개선
 
 ## 개발자
 

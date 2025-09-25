@@ -7,7 +7,7 @@ addon.version = GetAddOnMetadata(addonName, "Version")
 addon.defaults = {
     minimap = {
         hide = false,
-        minimapPos = 220,
+        minimapPos = 180,  -- 미니맵 아래쪽에 초기 위치
         lock = false,
     },
     calendar = {

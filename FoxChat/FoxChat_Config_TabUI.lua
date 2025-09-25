@@ -200,7 +200,7 @@ function FoxChat:ShowConfig()
     -- 메인 프레임 생성
     -- =============================================
     configFrame = CreateFrame("Frame", "FoxChatConfigFrame", UIParent, "BackdropTemplate")
-    configFrame:SetSize(600, 500)
+    configFrame:SetSize(700, 620)
     configFrame:SetPoint("CENTER")
     configFrame:SetMovable(true)
     configFrame:EnableMouse(true)
@@ -233,11 +233,13 @@ function FoxChat:ShowConfig()
     tabs[1] = CreateTabButton(configFrame, "채팅 필터링", 1)
     tabs[2] = CreateTabButton(configFrame, "말머리/말꼬리", 2)
     tabs[3] = CreateTabButton(configFrame, "광고 설정", 3)
+    tabs[4] = CreateTabButton(configFrame, "자동", 4)
 
     -- 탭 컨텐츠 프레임들 생성
     tabContents[1] = CreateTabContent(configFrame, 1)
     tabContents[2] = CreateTabContent(configFrame, 2)
     tabContents[3] = CreateTabContent(configFrame, 3)
+    tabContents[4] = CreateTabContent(configFrame, 4)
 
     -- 탭 버튼 클릭 이벤트
     for i, tab in ipairs(tabs) do
@@ -892,22 +894,14 @@ function FoxChat:ShowConfig()
     adMessageBackground:SetBackdropColor(0, 0, 0, 0.8)
 
     adMessageEditBox = CreateFrame("EditBox", "FoxChatAdMessageEditBox", adMessageBackground)
-    adMessageEditBox:SetSize(240, 50)
-    adMessageEditBox:SetPoint("TOPLEFT", 10, -5)
+    adMessageEditBox:SetSize(250, 60)  -- 배경과 같은 크기로 설정
+    adMessageEditBox:SetPoint("TOPLEFT", 0, 0)  -- 배경 전체를 덮도록
     adMessageEditBox:SetAutoFocus(false)
     adMessageEditBox:SetMultiLine(true)
     adMessageEditBox:SetMaxLetters(255)
     adMessageEditBox:SetFontObject(GameFontHighlight)
     adMessageEditBox:SetText((FoxChatDB and FoxChatDB.adMessage) or "")
-
-    -- EditBox 클릭 영역 개선 - 배경을 클릭해도 EditBox에 포커스가 가도록
-    adMessageBackground:EnableMouse(true)
-    adMessageBackground:SetScript("OnMouseDown", function(self, button)
-        if button == "LeftButton" then
-            adMessageEditBox:SetFocus()
-            -- 커서 위치는 건드리지 않음
-        end
-    end)
+    adMessageEditBox:SetTextInsets(10, 10, 5, 5)  -- 텍스트 여백 설정
 
     -- EditBox의 기본 마우스 클릭 동작을 사용 (커서가 클릭한 위치로 이동)
 
@@ -950,22 +944,14 @@ function FoxChat:ShowConfig()
     firstComeBackground:SetBackdropColor(0, 0, 0, 0.8)
 
     local firstComeEditBox = CreateFrame("EditBox", "FoxChatFirstComeEditBox", firstComeBackground)
-    firstComeEditBox:SetSize(240, 50)
-    firstComeEditBox:SetPoint("TOPLEFT", 10, -5)
+    firstComeEditBox:SetSize(250, 60)  -- 배경과 같은 크기로 설정
+    firstComeEditBox:SetPoint("TOPLEFT", 0, 0)  -- 배경 전체를 덮도록
     firstComeEditBox:SetAutoFocus(false)
     firstComeEditBox:SetMultiLine(true)
     firstComeEditBox:SetMaxLetters(255)
     firstComeEditBox:SetFontObject(GameFontHighlight)
     firstComeEditBox:SetText((FoxChatDB and FoxChatDB.firstComeMessage) or "")
-
-    -- EditBox 클릭 영역 개선 - 배경을 클릭해도 EditBox에 포커스가 가도록
-    firstComeBackground:EnableMouse(true)
-    firstComeBackground:SetScript("OnMouseDown", function(self, button)
-        if button == "LeftButton" then
-            firstComeEditBox:SetFocus()
-            -- 커서 위치는 건드리지 않음
-        end
-    end)
+    firstComeEditBox:SetTextInsets(10, 10, 5, 5)  -- 텍스트 여백 설정
 
     -- EditBox의 기본 마우스 클릭 동작을 사용 (커서가 클릭한 위치로 이동)
 
@@ -1406,6 +1392,336 @@ function FoxChat:ShowConfig()
     tab3.UpdateInfoText = UpdateInfoText  -- 참조 저장
 
     -- =============================================
+    -- 탭 4: 자동
+    -- =============================================
+    local tab4 = tabContents[4]
+    configFrame.tab4 = tab4  -- configFrame에 tab4 참조 저장
+
+    -- 1) 거래 자동 귓속말
+    local tradeAutoLabel = tab4:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    tradeAutoLabel:SetPoint("TOPLEFT", tab4, "TOPLEFT", 10, -10)
+    tradeAutoLabel:SetText("|cFFFFD700거래 자동 귓속말|r")
+
+    local tradeAutoCheckbox = CreateFrame("CheckButton", nil, tab4)
+    tradeAutoCheckbox:SetSize(24, 24)
+    tradeAutoCheckbox:SetPoint("TOPLEFT", tradeAutoLabel, "BOTTOMLEFT", 0, -5)
+    tradeAutoCheckbox:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
+    tradeAutoCheckbox:SetPushedTexture("Interface\\Buttons\\UI-CheckBox-Down")
+    tradeAutoCheckbox:SetHighlightTexture("Interface\\Buttons\\UI-CheckBox-Highlight")
+    tradeAutoCheckbox:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
+    tradeAutoCheckbox:SetChecked(FoxChatDB and FoxChatDB.autoTrade ~= false)  -- 기본값 true
+
+    local tradeAutoCheckLabel = tab4:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    tradeAutoCheckLabel:SetPoint("LEFT", tradeAutoCheckbox, "RIGHT", 5, 0)
+    tradeAutoCheckLabel:SetText("거래 완료 시 자동으로 거래 내역을 귓속말로 전송")
+
+    tradeAutoCheckbox:SetScript("OnClick", function(self)
+        if FoxChatDB then
+            FoxChatDB.autoTrade = self:GetChecked()
+        end
+    end)
+
+    local tradeHelp = tab4:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    tradeHelp:SetPoint("TOPLEFT", tradeAutoCheckbox, "BOTTOMLEFT", 0, -5)
+    tradeHelp:SetText("예시: [거래] 님에게 비단천 x5, 무거운 돌 x10을 주었고, 님은 나에게 2골드 50실버를 주었습니다.")
+    tradeHelp:SetTextColor(0.7, 0.7, 0.7)
+
+    -- 구분선
+    local separator4_1 = CreateSeparator(tab4, "TOPLEFT", tradeHelp, "BOTTOMLEFT", -10, -10)
+
+    -- 2) 파티 자동 인사
+    local partyGreetLabel = tab4:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    partyGreetLabel:SetPoint("TOPLEFT", separator4_1, "BOTTOMLEFT", 10, -10)
+    partyGreetLabel:SetText("|cFFFFD700파티 자동 인사|r")
+
+    -- 2-1) 내가 파티에 참가할 때 (왼쪽 컬럼)
+    local myJoinCheckbox = CreateFrame("CheckButton", nil, tab4)
+    myJoinCheckbox:SetSize(20, 20)
+    myJoinCheckbox:SetPoint("TOPLEFT", partyGreetLabel, "BOTTOMLEFT", 0, -10)
+    myJoinCheckbox:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
+    myJoinCheckbox:SetPushedTexture("Interface\\Buttons\\UI-CheckBox-Down")
+    myJoinCheckbox:SetHighlightTexture("Interface\\Buttons\\UI-CheckBox-Highlight")
+    myJoinCheckbox:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
+    myJoinCheckbox:SetChecked(FoxChatDB and FoxChatDB.autoPartyGreetMyJoin)
+
+    local myJoinCheckLabel = tab4:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    myJoinCheckLabel:SetPoint("LEFT", myJoinCheckbox, "RIGHT", 3, 0)
+    myJoinCheckLabel:SetText("내가 참가할 때")
+
+    myJoinCheckbox:SetScript("OnClick", function(self)
+        if FoxChatDB then
+            FoxChatDB.autoPartyGreetMyJoin = self:GetChecked()
+        end
+    end)
+
+    -- 내가 참가할 때 인사말 목록
+    local myJoinListLabel = tab4:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    myJoinListLabel:SetPoint("TOPLEFT", myJoinCheckbox, "BOTTOMLEFT", 0, -8)
+    myJoinListLabel:SetText("인사말 ({me}=내 이름):")
+    myJoinListLabel:SetTextColor(0.8, 0.8, 0.8)
+
+    local myJoinBackground = CreateFrame("Frame", nil, tab4, "BackdropTemplate")
+    myJoinBackground:SetSize(260, 70)
+    myJoinBackground:SetPoint("TOPLEFT", myJoinListLabel, "BOTTOMLEFT", 0, -3)
+    myJoinBackground:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 16,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 }
+    })
+    myJoinBackground:SetBackdropColor(0, 0, 0, 0.8)
+
+    -- EditBox 생성
+    local myJoinEditBox = CreateFrame("EditBox", nil, myJoinBackground)
+    myJoinEditBox:SetSize(260, 70)  -- 배경과 같은 크기로 설정
+    myJoinEditBox:SetPoint("TOPLEFT", 0, 0)  -- 배경 전체를 덮도록
+    myJoinEditBox:SetAutoFocus(false)
+    myJoinEditBox:SetMultiLine(true)
+    myJoinEditBox:SetMaxLetters(500)
+    myJoinEditBox:SetFontObject(GameFontHighlight)
+    myJoinEditBox:SetTextInsets(10, 10, 5, 5)  -- 텍스트 여백 설정
+
+    -- 기본 인사말 (내가 참가)
+    local defaultMyJoinGreets = {
+        "안녕하세요! {me}입니다. 잘 부탁드려요!",
+        "반갑습니다~ 함께 모험해요!",
+        "파티 초대 감사합니다!"
+    }
+
+    local myJoinText = ""
+    if FoxChatDB and FoxChatDB.partyGreetMyJoinMessages then
+        myJoinText = table.concat(FoxChatDB.partyGreetMyJoinMessages, "\n")
+    else
+        myJoinText = table.concat(defaultMyJoinGreets, "\n")
+    end
+    myJoinEditBox:SetText(myJoinText)
+
+    -- EditBox의 기본 마우스 클릭 동작을 사용 (커서가 클릭한 위치로 이동)
+
+    myJoinEditBox:SetScript("OnTextChanged", function(self)
+        if FoxChatDB then
+            local text = self:GetText()
+            local messages = {}
+            for line in string.gmatch(text, "[^\n]+") do
+                local trimmed = string.gsub(line, "^%s*(.-)%s*$", "%1")
+                if trimmed ~= "" then
+                    table.insert(messages, trimmed)
+                end
+            end
+            FoxChatDB.partyGreetMyJoinMessages = messages
+        end
+    end)
+
+    myJoinEditBox:SetScript("OnEscapePressed", function(self)
+        self:ClearFocus()
+    end)
+
+    -- 2-2) 다른 사람이 파티에 참가할 때 (오른쪽 컬럼)
+    local othersJoinCheckbox = CreateFrame("CheckButton", nil, tab4)
+    othersJoinCheckbox:SetSize(20, 20)
+    othersJoinCheckbox:SetPoint("TOPLEFT", partyGreetLabel, "BOTTOMLEFT", 280, -10)
+    othersJoinCheckbox:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
+    othersJoinCheckbox:SetPushedTexture("Interface\\Buttons\\UI-CheckBox-Down")
+    othersJoinCheckbox:SetHighlightTexture("Interface\\Buttons\\UI-CheckBox-Highlight")
+    othersJoinCheckbox:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
+    othersJoinCheckbox:SetChecked(FoxChatDB and FoxChatDB.autoPartyGreetOthersJoin)
+
+    local othersJoinCheckLabel = tab4:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    othersJoinCheckLabel:SetPoint("LEFT", othersJoinCheckbox, "RIGHT", 3, 0)
+    othersJoinCheckLabel:SetText("다른 사람이 참가할 때")
+
+    othersJoinCheckbox:SetScript("OnClick", function(self)
+        if FoxChatDB then
+            FoxChatDB.autoPartyGreetOthersJoin = self:GetChecked()
+        end
+    end)
+
+    -- 다른 사람 참가 시 인사말 목록
+    local othersJoinListLabel = tab4:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    othersJoinListLabel:SetPoint("TOPLEFT", othersJoinCheckbox, "BOTTOMLEFT", 0, -8)
+    othersJoinListLabel:SetText("인사말 ({target}=상대 이름):")
+    othersJoinListLabel:SetTextColor(0.8, 0.8, 0.8)
+
+    local othersJoinBackground = CreateFrame("Frame", nil, tab4, "BackdropTemplate")
+    othersJoinBackground:SetSize(260, 70)
+    othersJoinBackground:SetPoint("TOPLEFT", othersJoinListLabel, "BOTTOMLEFT", 0, -3)
+    othersJoinBackground:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 16,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 }
+    })
+    othersJoinBackground:SetBackdropColor(0, 0, 0, 0.8)
+
+    -- EditBox 생성
+    local othersJoinEditBox = CreateFrame("EditBox", nil, othersJoinBackground)
+    othersJoinEditBox:SetSize(260, 70)  -- 배경과 같은 크기로 설정
+    othersJoinEditBox:SetPoint("TOPLEFT", 0, 0)  -- 배경 전체를 덮도록
+    othersJoinEditBox:SetAutoFocus(false)
+    othersJoinEditBox:SetMultiLine(true)
+    othersJoinEditBox:SetMaxLetters(500)
+    othersJoinEditBox:SetFontObject(GameFontHighlight)
+    othersJoinEditBox:SetTextInsets(10, 10, 5, 5)  -- 텍스트 여백 설정
+
+    -- 기본 인사말 (다른 사람 참가)
+    local defaultOthersJoinGreets = {
+        "{target}님 환영합니다!",
+        "{target}님 반갑습니다~",
+        "어서오세요 {target}님!"
+    }
+
+    local othersJoinText = ""
+    if FoxChatDB and FoxChatDB.partyGreetOthersJoinMessages then
+        othersJoinText = table.concat(FoxChatDB.partyGreetOthersJoinMessages, "\n")
+    else
+        othersJoinText = table.concat(defaultOthersJoinGreets, "\n")
+    end
+    othersJoinEditBox:SetText(othersJoinText)
+
+    -- EditBox의 기본 마우스 클릭 동작을 사용 (커서가 클릭한 위치로 이동)
+
+    othersJoinEditBox:SetScript("OnTextChanged", function(self)
+        if FoxChatDB then
+            local text = self:GetText()
+            local messages = {}
+            for line in string.gmatch(text, "[^\n]+") do
+                local trimmed = string.gsub(line, "^%s*(.-)%s*$", "%1")
+                if trimmed ~= "" then
+                    table.insert(messages, trimmed)
+                end
+            end
+            FoxChatDB.partyGreetOthersJoinMessages = messages
+        end
+    end)
+
+    othersJoinEditBox:SetScript("OnEscapePressed", function(self)
+        self:ClearFocus()
+    end)
+
+
+    -- 스크롤 프레임 생성 (내용이 많아서)
+    local scrollFrame = CreateFrame("ScrollFrame", "FoxChatTab4ScrollFrame", tab4, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", tab4, "TOPLEFT", 0, 0)
+    scrollFrame:SetPoint("BOTTOMRIGHT", tab4, "BOTTOMRIGHT", -30, 0)
+
+    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
+    scrollChild:SetSize(640, 1000)  -- 높이를 늘림
+    scrollFrame:SetScrollChild(scrollChild)
+
+    -- 기존 컨트롤들을 scrollChild로 재배치
+    tradeAutoLabel:SetParent(scrollChild)
+    tradeAutoLabel:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 10, -10)
+
+    tradeAutoCheckbox:SetParent(scrollChild)
+    tradeHelp:SetParent(scrollChild)
+    separator4_1:SetParent(scrollChild)
+
+    partyGreetLabel:SetParent(scrollChild)
+    myJoinCheckbox:SetParent(scrollChild)
+    myJoinCheckLabel:SetParent(scrollChild)
+    myJoinListLabel:SetParent(scrollChild)
+    myJoinBackground:SetParent(scrollChild)
+    myJoinEditBox:SetParent(scrollChild)
+    othersJoinCheckbox:SetParent(scrollChild)
+    othersJoinCheckLabel:SetParent(scrollChild)
+    othersJoinListLabel:SetParent(scrollChild)
+    othersJoinBackground:SetParent(scrollChild)
+    othersJoinEditBox:SetParent(scrollChild)
+
+    -- 파티 자동 인사와 자동 버프 요청 사이 구분선 (두 컬럼 중 더 아래쪽 기준)
+    local bottomRef = myJoinBackground
+    if othersJoinBackground:GetBottom() and myJoinBackground:GetBottom() then
+        -- 두 배경 중 더 아래에 있는 것을 기준으로 함
+        bottomRef = myJoinBackground
+    end
+    local separator4_2 = CreateSeparator(scrollChild, "TOPLEFT", myJoinBackground, "BOTTOMLEFT", -10, -10)
+
+    -- 4) 자동 버프 요청
+    local autoBuffLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    autoBuffLabel:SetPoint("TOPLEFT", separator4_2, "BOTTOMLEFT", 0, -10)
+    autoBuffLabel:SetText("|cFFFFD700자동 버프 요청|r")
+
+    local autoBuffCheckbox = CreateFrame("CheckButton", nil, scrollChild)
+    autoBuffCheckbox:SetSize(24, 24)
+    autoBuffCheckbox:SetPoint("TOPLEFT", autoBuffLabel, "BOTTOMLEFT", 10, -5)
+    autoBuffCheckbox:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
+    autoBuffCheckbox:SetPushedTexture("Interface\\Buttons\\UI-CheckBox-Down")
+    autoBuffCheckbox:SetHighlightTexture("Interface\\Buttons\\UI-CheckBox-Highlight")
+    autoBuffCheckbox:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
+    autoBuffCheckbox:SetChecked(FoxChatDB and FoxChatDB.autoBuffRequest)
+
+    local autoBuffCheckLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    autoBuffCheckLabel:SetPoint("LEFT", autoBuffCheckbox, "RIGHT", 5, 0)
+    autoBuffCheckLabel:SetText("필요한 버프가 없을 때 자동 요청")
+
+    autoBuffCheckbox:SetScript("OnClick", function(self)
+        if FoxChatDB then
+            FoxChatDB.autoBuffRequest = self:GetChecked()
+        end
+    end)
+
+    -- 버프 요청 쿨다운
+    local buffCooldownLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    buffCooldownLabel:SetPoint("TOPLEFT", autoBuffCheckbox, "BOTTOMLEFT", 0, -10)
+    buffCooldownLabel:SetText("요청 쿨다운 (분):")
+
+    local buffCooldownSlider = CreateFrame("Slider", "FoxChatBuffCooldownSlider", scrollChild, "OptionsSliderTemplate")
+    buffCooldownSlider:SetPoint("LEFT", buffCooldownLabel, "RIGHT", 10, 0)
+    buffCooldownSlider:SetSize(150, 20)
+    buffCooldownSlider:SetMinMaxValues(1, 10)
+    buffCooldownSlider:SetValueStep(1)
+    buffCooldownSlider:SetObeyStepOnDrag(true)
+
+    local currentBuffCooldown = (FoxChatDB and FoxChatDB.buffRequestCooldown) or 5
+    buffCooldownSlider:SetValue(currentBuffCooldown)
+
+    _G[buffCooldownSlider:GetName() .. "Low"]:SetText("1분")
+    _G[buffCooldownSlider:GetName() .. "High"]:SetText("10분")
+    _G[buffCooldownSlider:GetName() .. "Text"]:SetText(currentBuffCooldown .. "분")
+
+    buffCooldownSlider:SetScript("OnValueChanged", function(self, value)
+        value = math.floor(value)
+        if FoxChatDB then
+            FoxChatDB.buffRequestCooldown = value
+        end
+        _G[self:GetName() .. "Text"]:SetText(value .. "분")
+    end)
+
+    -- 버프 요청 메시지
+    local buffRequestMsgLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    buffRequestMsgLabel:SetPoint("TOPLEFT", buffCooldownLabel, "BOTTOMLEFT", 0, -15)
+    buffRequestMsgLabel:SetText("버프 요청 메시지:")
+
+    local buffRequestBackground = CreateFrame("Frame", nil, scrollChild, "BackdropTemplate")
+    buffRequestBackground:SetSize(540, 30)
+    buffRequestBackground:SetPoint("TOPLEFT", buffRequestMsgLabel, "BOTTOMLEFT", 0, -5)
+    buffRequestBackground:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 8,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 }
+    })
+    buffRequestBackground:SetBackdropColor(0, 0, 0, 0.8)
+
+    local buffRequestEditBox = CreateFrame("EditBox", nil, buffRequestBackground)
+    buffRequestEditBox:SetSize(530, 25)
+    buffRequestEditBox:SetPoint("LEFT", 5, 0)
+    buffRequestEditBox:SetAutoFocus(false)
+    buffRequestEditBox:SetMaxLetters(100)
+    buffRequestEditBox:SetFontObject(GameFontHighlight)
+    buffRequestEditBox:SetText((FoxChatDB and FoxChatDB.buffRequestMessage) or "버프 부탁드립니다~")
+
+    buffRequestEditBox:SetScript("OnTextChanged", function(self)
+        if FoxChatDB then
+            FoxChatDB.buffRequestMessage = self:GetText()
+        end
+    end)
+
+    buffRequestEditBox:SetScript("OnEscapePressed", function(self)
+        self:ClearFocus()
+    end)
+
+    -- =============================================
     -- 하단 버튼들
     -- =============================================
 
@@ -1450,7 +1766,8 @@ function FoxChat:ShowConfig()
         local tabName = {
             [1] = "채팅 필터링",
             [2] = "말머리/말꼬리",
-            [3] = "광고 설정"
+            [3] = "광고 설정",
+            [4] = "자동"
         }
 
         -- 초기화 확인 다이얼로그
@@ -1499,6 +1816,24 @@ function FoxChat:ShowConfig()
                     FoxChatDB.adPosition = {x = 350, y = -150}
                     FoxChatDB.adCooldown = 15
                     FoxChatDB.adChannel = "파티찾기"
+                elseif currentTab == 4 then
+                    -- 자동 탭 초기화
+                    FoxChatDB.autoTrade = true
+                    FoxChatDB.autoPartyGreetMyJoin = false
+                    FoxChatDB.autoPartyGreetOthersJoin = false
+                    FoxChatDB.partyGreetMyJoinMessages = {
+                        "안녕하세요! {me}입니다. 잘 부탁드려요!",
+                        "반갑습니다~ 함께 모험해요!",
+                        "파티 초대 감사합니다!"
+                    }
+                    FoxChatDB.partyGreetOthersJoinMessages = {
+                        "{target}님 환영합니다!",
+                        "{target}님 반갑습니다~",
+                        "어서오세요 {target}님!"
+                    }
+                    FoxChatDB.autoBuffRequest = false
+                    FoxChatDB.buffRequestCooldown = 5
+                    FoxChatDB.buffRequestMessage = "버프 부탁드립니다~"
                 end
 
                 -- UI 업데이트

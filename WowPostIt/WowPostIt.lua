@@ -5,7 +5,7 @@ local L = addon.L or {}
 local defaults = {
     minimapButton = {
         hide = false,
-        minimapPos = 45,
+        minimapPos = 180,  -- 미니맵 아래쪽에 초기 위치
         radius = 80,
     },
     notes = {},

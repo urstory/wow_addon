@@ -37,7 +37,7 @@ local defaults = {
     },
     minimapButton = {
         hide = false,
-        minimapPos = 45,
+        minimapPos = 180,  -- 미니맵 아래쪽에 초기 위치
         radius = 80,  -- 미니맵 테두리까지의 거리
     },
     toastPosition = {
@@ -76,6 +76,7 @@ local debugMode = false
 -- 원본 AddMessage 함수들을 저장
 local originalAddMessage = {}
 local originalSendChatMessage = SendChatMessage
+local isAdvertisementMessage = false  -- 광고 메시지 전송 중인지 플래그
 
 -- 토스트 알림 시스템
 local activeToasts = {}  -- 현재 활성화된 토스트 목록
@@ -474,7 +475,6 @@ local function HighlightKeywords(message, channelGroup, author)
                 msgContentForCheck = string.gsub(msgContentForCheck, "^%s*", "")
 
                 if debugMode then
-                    print(string.format("[FoxChat Debug] 말머리 제거: '%s' -> '%s'", originalMsgContent, msgContentForCheck))
                 end
             end
         end
@@ -490,13 +490,11 @@ local function HighlightKeywords(message, channelGroup, author)
                 msgContentForCheck = string.gsub(msgContentForCheck, "%s*$", "")
 
                 if debugMode then
-                    print(string.format("[FoxChat Debug] 말꼬리 제거: '%s' -> '%s'", originalMsgContent, msgContentForCheck))
                 end
             end
         end
 
         if debugMode and (myPrefix ~= "" or mySuffix ~= "") then
-            print(string.format("[FoxChat Debug] 최종 필터링 텍스트: '%s'", msgContentForCheck))
         end
     end
 
@@ -514,7 +512,6 @@ local function HighlightKeywords(message, channelGroup, author)
 
     -- 디버그: 무시 키워드 체크 전 작성자 정보 출력
     if debugMode and author then
-        print(string.format("[FoxChat Debug] Checking author: '%s' (clean: '%s') against ignore keywords", authorLower, authorClean))
     end
 
     -- 작성자 닉네임이 무시 키워드 중 하나와 일치하는지 확인
@@ -522,7 +519,6 @@ local function HighlightKeywords(message, channelGroup, author)
     for lowerIgnore, originalIgnore in pairs(ignoreKeywords) do
         if debugMode and author then
             if lowerIgnore == authorClean then
-                print(string.format("[FoxChat Debug] Author '%s' matches ignore keyword '%s' - NOT filtering", authorClean, originalIgnore))
             end
         end
         if lowerIgnore == authorLower or lowerIgnore == authorClean then
@@ -615,7 +611,6 @@ local function HookChatFrame(chatFrame)
                     -- playerLink는 "이름" 또는 "이름-서버명" 형태
                     author = playerLink
                     if debugMode then
-                        print(string.format("[FoxChat Debug HookChatFrame] Author: '%s'", playerLink))
                     end
                 else
                     -- 대체 패턴: |Hplayer:이름 형태
@@ -624,7 +619,6 @@ local function HookChatFrame(chatFrame)
                     if simpleName then
                         author = simpleName
                         if debugMode then
-                            print(string.format("[FoxChat Debug HookChatFrame] Author: '%s'", simpleName))
                         end
                     else
                         -- [이름] 패턴 찾기
@@ -633,11 +627,9 @@ local function HookChatFrame(chatFrame)
                         if bracketName and not string.find(bracketName, "파티") and not string.find(bracketName, "공격대") then
                             author = bracketName
                             if debugMode then
-                                print(string.format("[FoxChat Debug HookChatFrame] Author: '%s'", bracketName))
                             end
                         else
                             if debugMode then
-                                print("[FoxChat Debug HookChatFrame] No author found in message")
                             end
                         end
                     end
@@ -682,7 +674,6 @@ local function ChatFilter(self, event, msg, author, ...)
 
     -- 디버그: ChatFilter에서 받은 author 출력
     if debugMode and author then
-        print(string.format("[FoxChat Debug] Author: '%s'", author))
     end
 
     -- 채널 확인 및 그룹 결정
@@ -722,6 +713,12 @@ end
 -- SendChatMessage 후킹 (말머리/말꼬리)
 local function HookSendChatMessage()
     SendChatMessage = function(message, chatType, language, channel)
+        -- 광고 메시지는 훅을 적용하지 않음
+        if isAdvertisementMessage then
+            originalSendChatMessage(message, chatType, language, channel)
+            return
+        end
+
         if FoxChatDB.prefixSuffixEnabled and message and message ~= "" then
             -- 위상 메시지는 말머리/말꼬리 제외
             local phaseMessages = {"일위상", "이위상", "삼위상"}
@@ -926,31 +923,42 @@ local function CreateAdButton()
         -- 좌클릭 처리 - 기존 기능
         if button == "LeftButton" and not adCooldownTimer then
             -- 파티찾기 채널에 메시지 전송 (광고 메시지 + [선입 메시지] + 파티 정보)
-            local message = FoxChatDB.adMessage or ""
-            if not IsEmptyOrWhitespace(message) then
-                -- 선입 메시지가 있으면 추가
-                local firstComeMessage = FoxChatDB.firstComeMessage or ""
-                if not IsEmptyOrWhitespace(firstComeMessage) then
-                    message = message .. " [" .. firstComeMessage .. "]"
+            local baseMessage = FoxChatDB.adMessage or ""
+
+            -- 메시지 복사본 생성 (문자열이 제대로 전달되도록)
+            local message = ""
+            if baseMessage and baseMessage ~= "" then
+                message = tostring(baseMessage)
+            end
+
+            -- 선입 메시지가 있으면 추가
+            local firstComeMessage = FoxChatDB.firstComeMessage or ""
+            if firstComeMessage ~= "" then
+                -- 메시지 뒤에 공백이 없으면 추가
+                if message ~= "" and string.sub(message, -1) ~= " " then
+                    message = message .. " "
+                end
+                message = message .. "(" .. tostring(firstComeMessage) .. ")"
+            end
+
+            -- 파티원수가 0이면 수동 모드 (파티 정보 추가하지 않음)
+            local maxMembers = tonumber(FoxChatDB.partyMaxSize) or 5
+
+            if maxMembers > 0 then
+                -- 자동 모드: 현재 파티/공격대 인원 확인
+                local currentMembers = 1  -- 기본값 (나 혼자)
+
+                if IsInRaid() then
+                    currentMembers = GetNumGroupMembers()  -- 공격대 인원
+                elseif IsInGroup() then
+                    currentMembers = GetNumGroupMembers()  -- 파티 인원
                 end
 
-                -- 파티원수가 0이면 수동 모드 (파티 정보 추가하지 않음)
-                local maxMembers = FoxChatDB.partyMaxSize or 5
-
-                if maxMembers > 0 then
-                    -- 자동 모드: 현재 파티/공격대 인원 확인
-                    local currentMembers = 1  -- 기본값 (나 혼자)
-
-                    if IsInRaid() then
-                        currentMembers = GetNumGroupMembers()  -- 공격대 인원
-                    elseif IsInGroup() then
-                        currentMembers = GetNumGroupMembers()  -- 파티 인원
-                    end
-
-                    -- 메시지에 파티 정보 추가
-                    message = message .. " (" .. currentMembers .. "/" .. maxMembers .. ")"
+                -- 메시지에 파티 정보 추가 (띄어쓰기 확인)
+                if message ~= "" and string.sub(message, -1) ~= " " then
+                    message = message .. " "
                 end
-                -- maxMembers가 0이면 메시지를 수정하지 않음 (사용자가 직접 입력)
+                message = message .. "(" .. currentMembers .. "/" .. maxMembers .. ")"
             end
 
             if not IsEmptyOrWhitespace(message) then
@@ -986,8 +994,14 @@ local function CreateAdButton()
                 end
 
                 if targetChannel then
+                    -- 광고 메시지 플래그 설정
+                    isAdvertisementMessage = true
+
                     -- 광고 메시지는 말머리/말꼬리 없이 원본 함수로 전송
                     originalSendChatMessage(message, "CHANNEL", nil, targetChannel)
+
+                    -- 플래그 해제
+                    isAdvertisementMessage = false
                 else
                     print("|cFFFF7D0A[FoxChat]|r " .. targetChannelName .. " 채널을 찾을 수 없습니다.")
                 end
@@ -1712,3 +1726,877 @@ SlashCmdList["FOXCHAT"] = function(msg)
         print(L["COMMAND_LIST"])
     end
 end
+
+-- =============================================
+-- 자동 기능들
+-- =============================================
+
+-- 거래 완료 시 자동 귓속말
+local tradePartnerName = nil
+local tradePlayerAccepted = false
+local tradeTargetAccepted = false
+local tradeWillComplete = false  -- 거래 성공 예정 플래그
+local tradeSnapshot = { givenItems = {}, gotItems = {}, givenMoney = 0, gotMoney = 0 }
+
+-- 거래 정보 백업 (UI_INFO_MESSAGE에서 사용)
+local lastTradePartnerName = nil
+local lastTradeMessage = nil
+local lastTradeSentTime = 0  -- 중복 전송 방지용 타임스탬프
+
+-- 도우미: 동전(코퍼) → 골드/실버/코퍼 문자열
+local function FormatMoney(copper)
+    copper = copper or 0
+    if copper == 0 then return "" end
+
+    local gold = math.floor(copper / 10000)
+    local silver = math.floor((copper % 10000) / 100)
+    local c = copper % 100
+
+    local parts = {}
+    if gold > 0 then table.insert(parts, string.format("%d골드", gold)) end
+    if silver > 0 then table.insert(parts, string.format("%d실버", silver)) end
+    if c > 0 then table.insert(parts, string.format("%d코퍼", c)) end
+
+    if #parts == 0 then return "" end
+    return table.concat(parts, " ")
+end
+
+-- 파트너 이름 얻기
+local function ResolvePartnerName()
+
+    -- TradeFrameRecipientNameText가 가장 정확
+    if TradeFrameRecipientNameText and TradeFrameRecipientNameText:GetText() then
+        local name = TradeFrameRecipientNameText:GetText()
+        if name and name ~= "" then
+            return name
+        end
+    else
+    end
+
+    -- NPC 타겟 체크
+    local npcTarget = UnitName("NPC")
+    if npcTarget and npcTarget ~= "" then
+        if npcTarget ~= UnitName("player") then
+            return npcTarget
+        end
+    end
+
+    -- 대체 방법: 타겟 (플레이어 체크 제거하여 안전성 향상)
+    local targetName = UnitName("target")
+    if targetName and targetName ~= UnitName("player") then
+        return targetName
+    end
+
+    return nil
+end
+
+-- 이름 정규화 (서버명, 색코드, 공백 제거)
+local function NormalizeName(name)
+    if not name or name == "" then
+        return nil
+    end
+
+    -- Ambiguate 함수가 있으면 서버명 제거
+    if Ambiguate then
+        name = Ambiguate(name, "none")
+    else
+        -- 수동으로 서버명 제거: "Name-Realm" → "Name"
+        name = name:gsub("%-.+$", "")
+    end
+
+    -- 색코드 제거
+    name = name:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+
+    -- 앞뒤 공백 제거
+    name = name:match("^%s*(.-)%s*$")
+
+    return name ~= "" and name or nil
+end
+
+-- 거래 정보 스냅샷 (TRADE_CLOSED 시점에 정보가 사라질 수 있으므로 미리 저장)
+local function SnapshotTradeData()
+    tradeSnapshot.givenItems = {}
+    tradeSnapshot.gotItems = {}
+
+    -- 상수명 충돌 방지: 다른 변수명 사용
+    local TRADE_SLOTS = (_G.MAX_TRADE_ITEMS and _G.MAX_TRADE_ITEMS) or 6  -- 클래식은 보통 6개 슬롯
+
+    -- 내가 준 아이템들
+    for i = 1, TRADE_SLOTS do
+        local name, texture, quantity, quality, isUsable, enchant = GetTradePlayerItemInfo(i)
+        local link = GetTradePlayerItemLink(i)
+        if name then
+            local label = link or name
+            if (quantity or 1) > 1 then
+                table.insert(tradeSnapshot.givenItems, string.format("%s(%d)", label, quantity))
+            else
+                table.insert(tradeSnapshot.givenItems, label)
+            end
+        end
+    end
+
+    -- 내가 받은 아이템들
+    for i = 1, TRADE_SLOTS do
+        local name, texture, quantity, quality, isUsable, enchant = GetTradeTargetItemInfo(i)
+        local link = GetTradeTargetItemLink(i)
+        if name then
+            local label = link or name
+            if (quantity or 1) > 1 then
+                table.insert(tradeSnapshot.gotItems, string.format("%s(%d)", label, quantity))
+            else
+                table.insert(tradeSnapshot.gotItems, label)
+            end
+        end
+    end
+
+    -- 금액 (문자열로 반환될 수 있으므로 숫자로 변환)
+    local givenMoney = GetPlayerTradeMoney()
+    local gotMoney = GetTargetTradeMoney()
+
+    -- 문자열이면 숫자로 변환, nil이면 0
+    if type(givenMoney) == "string" then
+        tradeSnapshot.givenMoney = tonumber(givenMoney) or 0
+    else
+        tradeSnapshot.givenMoney = givenMoney or 0
+    end
+
+    if type(gotMoney) == "string" then
+        tradeSnapshot.gotMoney = tonumber(gotMoney) or 0
+    else
+        tradeSnapshot.gotMoney = gotMoney or 0
+    end
+
+end
+
+-- 거래 메시지 생성
+local function FormatTradeMessage()
+    if not tradePartnerName then
+        return nil
+    end
+
+    local myName = UnitName("player")
+    local givenItemsStr = #tradeSnapshot.givenItems > 0 and table.concat(tradeSnapshot.givenItems, ", ") or "없음"
+    local gotItemsStr = #tradeSnapshot.gotItems > 0 and table.concat(tradeSnapshot.gotItems, ", ") or "없음"
+    local givenMoneyStr = FormatMoney(tradeSnapshot.givenMoney)
+    local gotMoneyStr = FormatMoney(tradeSnapshot.gotMoney)
+
+    -- 메시지 조합
+    local givenParts = {}
+    if givenItemsStr ~= "없음" then table.insert(givenParts, givenItemsStr) end
+    if givenMoneyStr ~= "" then table.insert(givenParts, givenMoneyStr) end
+    local givenTotal = #givenParts > 0 and table.concat(givenParts, ", ") or "없음"
+
+    local gotParts = {}
+    if gotItemsStr ~= "없음" then table.insert(gotParts, gotItemsStr) end
+    if gotMoneyStr ~= "" then table.insert(gotParts, gotMoneyStr) end
+    local gotTotal = #gotParts > 0 and table.concat(gotParts, ", ") or "없음"
+
+    -- 거래 방향에 따른 메시지 분기
+    local message
+    if gotTotal ~= "없음" and givenTotal == "없음" then
+        -- 받기만 한 경우
+        message = string.format(
+            "[거래] %s님께서 %s 주셨습니다.",
+            tradePartnerName,
+            gotTotal
+        )
+    elseif gotTotal == "없음" and givenTotal ~= "없음" then
+        -- 주기만 한 경우
+        message = string.format(
+            "[거래] %s님께 %s 전달했습니다.",
+            tradePartnerName,
+            givenTotal
+        )
+    else
+        -- 양방향 거래 - 메시지 길이 체크
+        local fullMessage = string.format(
+            "[거래] %s님과 거래 완료! (받음: %s / 드림: %s)",
+            tradePartnerName,
+            gotTotal,
+            givenTotal
+        )
+
+        -- WoW 메시지 길이 제한 (대략 255자)
+        if string.len(fullMessage) > 240 then
+            -- 아이템 목록을 줄여서 표시
+            local shortGotItems = {}
+            local shortGivenItems = {}
+            local gotMoneyStr = FormatMoney(tradeSnapshot.gotMoney)
+            local givenMoneyStr = FormatMoney(tradeSnapshot.givenMoney)
+
+            -- 받은 아이템 최대 3개까지만 표시
+            for i = 1, math.min(3, #tradeSnapshot.gotItems) do
+                table.insert(shortGotItems, tradeSnapshot.gotItems[i])
+            end
+            if #tradeSnapshot.gotItems > 3 then
+                table.insert(shortGotItems, string.format("외 %d개", #tradeSnapshot.gotItems - 3))
+            end
+
+            -- 준 아이템 최대 2개까지만 표시
+            for i = 1, math.min(2, #tradeSnapshot.givenItems) do
+                table.insert(shortGivenItems, tradeSnapshot.givenItems[i])
+            end
+            if #tradeSnapshot.givenItems > 2 then
+                table.insert(shortGivenItems, string.format("외 %d개", #tradeSnapshot.givenItems - 2))
+            end
+
+            -- 짧은 버전 조합
+            local shortGotParts = {}
+            if #shortGotItems > 0 then
+                table.insert(shortGotParts, table.concat(shortGotItems, ", "))
+            end
+            if gotMoneyStr ~= "" then
+                table.insert(shortGotParts, gotMoneyStr)
+            end
+            local shortGotTotal = #shortGotParts > 0 and table.concat(shortGotParts, ", ") or "없음"
+
+            local shortGivenParts = {}
+            if #shortGivenItems > 0 then
+                table.insert(shortGivenParts, table.concat(shortGivenItems, ", "))
+            end
+            if givenMoneyStr ~= "" then
+                table.insert(shortGivenParts, givenMoneyStr)
+            end
+            local shortGivenTotal = #shortGivenParts > 0 and table.concat(shortGivenParts, ", ") or "없음"
+
+            message = string.format(
+                "[거래] %s님과 거래 완료! (받음: %s / 드림: %s)",
+                tradePartnerName,
+                shortGotTotal,
+                shortGivenTotal
+            )
+        else
+            message = fullMessage
+        end
+    end
+
+    return message
+end
+
+-- 파티 자동 인사
+local partyGreetCooldown = {}  -- 중복 인사 방지용 쿨다운
+local hasGreetedMyJoin = false  -- 내가 이미 인사했는지
+
+-- 내가 파티에 참가할 때 인사
+local function SendMyJoinGreeting()
+    if not FoxChatDB or not FoxChatDB.autoPartyGreetMyJoin then return end
+    if not FoxChatDB.partyGreetMyJoinMessages or #FoxChatDB.partyGreetMyJoinMessages == 0 then return end
+    if hasGreetedMyJoin then return end  -- 이미 인사했으면 스킵
+
+    hasGreetedMyJoin = true
+
+    -- 랜덤 메시지 선택
+    local messages = FoxChatDB.partyGreetMyJoinMessages
+    local message = messages[math.random(#messages)]
+
+    -- 변수 치환
+    local myName = UnitName("player")
+    message = string.gsub(message, "{me}", myName)
+
+    -- 파티 채팅으로 전송 (약간의 딜레이)
+    C_Timer.After(1, function()
+        SendChatMessage(message, "PARTY")
+    end)
+
+    -- 30초 후 플래그 리셋 (재입장 시 인사 가능)
+    C_Timer.After(30, function()
+        hasGreetedMyJoin = false
+    end)
+end
+
+-- 다른 사람이 파티에 참가할 때 인사
+local function SendOthersJoinGreeting(targetName)
+    if not FoxChatDB or not FoxChatDB.autoPartyGreetOthersJoin then return end
+    if not FoxChatDB.partyGreetOthersJoinMessages or #FoxChatDB.partyGreetOthersJoinMessages == 0 then return end
+    if not targetName or targetName == "" then return end
+
+    -- 쿨다운 체크 (10초)
+    local now = GetTime()
+    if targetName and partyGreetCooldown[targetName] and (now - partyGreetCooldown[targetName]) < 10 then
+        return
+    end
+    if targetName then
+        partyGreetCooldown[targetName] = now
+    end
+
+    -- 랜덤 메시지 선택
+    local messages = FoxChatDB.partyGreetOthersJoinMessages
+    local message = messages[math.random(#messages)]
+
+    -- 변수 치환
+    message = string.gsub(message, "{target}", targetName)
+
+    -- 파티 채팅으로 전송 (약간의 딜레이)
+    C_Timer.After(1.5, function()
+        SendChatMessage(message, "PARTY")
+    end)
+end
+
+-- 자동 수리 알림
+local lastRepairWarning = 0
+local repairWarningCooldown = 300  -- 5분 쿨다운
+
+local function CheckDurability()
+    if not FoxChatDB or not FoxChatDB.autoRepairAlert then return end
+
+    local threshold = (FoxChatDB.repairThreshold or 30) / 100
+    local lowestDurability = 1.0
+    local needsRepair = false
+    local brokenItems = {}
+
+    -- 각 장비 슬롯 확인
+    for i = 1, 18 do
+        local current, max = GetInventoryItemDurability(i)
+        if current and max and max > 0 then
+            local percent = current / max
+            if percent < lowestDurability then
+                lowestDurability = percent
+            end
+            if percent <= threshold then
+                needsRepair = true
+                local itemLink = GetInventoryItemLink("player", i)
+                if itemLink then
+                    table.insert(brokenItems, string.format("%s (%.0f%%)", itemLink, percent * 100))
+                end
+            end
+        end
+    end
+
+    -- 경고 메시지 전송
+    if needsRepair then
+        local now = GetTime()
+        if (now - lastRepairWarning) > repairWarningCooldown then
+            lastRepairWarning = now
+
+            local message = string.format("|cFFFF0000[수리 필요]|r 내구도가 %.0f%% 이하입니다!", lowestDurability * 100)
+
+            -- 파티/레이드 중이면 해당 채팅에 알림
+            if IsInRaid() then
+                SendChatMessage(message, "RAID")
+            elseif IsInGroup() then
+                SendChatMessage(message, "PARTY")
+            else
+                -- 혼자일 때는 시스템 메시지로 표시
+                DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r " .. message)
+            end
+
+            -- 손상된 아이템 목록 표시 (로컬)
+            if #brokenItems > 0 then
+                DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 손상된 장비: " .. table.concat(brokenItems, ", "))
+            end
+        end
+    end
+end
+
+-- 자동 버프 요청
+local lastBuffRequest = {}  -- 버프별 마지막 요청 시간
+
+local function CheckAndRequestBuffs()
+    if not FoxChatDB or not FoxChatDB.autoBuffRequest then return end
+    if not IsInGroup() and not IsInRaid() then return end  -- 파티/레이드 중일 때만
+
+    local cooldown = (FoxChatDB.buffRequestCooldown or 5) * 60  -- 분을 초로 변환
+    local now = GetTime()
+    local playerClass = select(2, UnitClass("player"))
+
+    -- 클래스별 필요 버프 체크
+    local neededBuffs = {}
+
+    -- 모든 클래스 공통
+    local commonBuffs = {
+        ["지능의 인장"] = {"마법사", "법사"},
+        ["왕의 축복"] = {"성기사"},
+        ["야생의 징표"] = {"드루이드"},
+        ["신의 권능: 인내"] = {"사제"},
+    }
+
+    -- 클래스별 특수 버프
+    if playerClass == "WARRIOR" or playerClass == "ROGUE" or playerClass == "HUNTER" then
+        commonBuffs["힘의 축복"] = {"성기사"}
+    elseif playerClass == "MAGE" or playerClass == "WARLOCK" or playerClass == "PRIEST" then
+        commonBuffs["지혜의 축복"] = {"성기사"}
+    end
+
+    -- 버프 체크
+    for buffName, providers in pairs(commonBuffs) do
+        local hasBuff = false
+        for i = 1, 40 do
+            local name = UnitBuff("player", i)
+            if not name then break end
+            if string.find(name, buffName) then
+                hasBuff = true
+                break
+            end
+        end
+
+        if not hasBuff then
+            -- 쿨다운 체크
+            if not lastBuffRequest[buffName] or (now - lastBuffRequest[buffName]) > cooldown then
+                -- 제공자가 파티에 있는지 확인
+                local hasProvider = false
+                local numMembers = IsInRaid() and GetNumGroupMembers() or GetNumGroupMembers()
+
+                for i = 1, numMembers do
+                    local unit = IsInRaid() and "raid"..i or "party"..i
+                    if UnitExists(unit) then
+                        local _, unitClass = UnitClass(unit)
+                        for _, provider in ipairs(providers) do
+                            if unitClass and string.find(unitClass, provider) then
+                                hasProvider = true
+                                break
+                            end
+                        end
+                    end
+                end
+
+                if hasProvider then
+                    table.insert(neededBuffs, buffName)
+                end
+            end
+        end
+    end
+
+    -- 버프 요청
+    if #neededBuffs > 0 then
+        local message = FoxChatDB.buffRequestMessage or "버프 부탁드립니다~"
+        if IsInRaid() then
+            SendChatMessage(message, "RAID")
+        else
+            SendChatMessage(message, "PARTY")
+        end
+
+        -- 쿨다운 업데이트
+        for _, buff in ipairs(neededBuffs) do
+            lastBuffRequest[buff] = now
+        end
+    end
+end
+
+-- 이벤트 핸들러 추가
+local autoEventFrame = CreateFrame("Frame")
+autoEventFrame:RegisterEvent("TRADE_SHOW")
+autoEventFrame:RegisterEvent("TRADE_REQUEST")  -- 거래 요청 받음
+autoEventFrame:RegisterEvent("TRADE_ACCEPT_UPDATE")
+autoEventFrame:RegisterEvent("TRADE_CLOSED")
+autoEventFrame:RegisterEvent("TRADE_REQUEST_CANCEL")  -- 거래 취소 처리
+autoEventFrame:RegisterEvent("UI_INFO_MESSAGE")  -- 거래 완료 메시지 감지
+autoEventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
+autoEventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+autoEventFrame:RegisterEvent("UPDATE_INVENTORY_DURABILITY")
+autoEventFrame:RegisterEvent("UNIT_AURA")
+autoEventFrame:RegisterEvent("PARTY_INVITE_REQUEST")  -- 파티 초대 받음
+
+local lastGroupSize = 0
+local partyMembers = {}  -- 현재 파티 멤버 추적
+local wasInvited = false  -- 초대받았는지 여부
+
+autoEventFrame:SetScript("OnEvent", function(self, event, ...)
+    if event == "TRADE_SHOW" or event == "TRADE_REQUEST" then
+
+        -- TRADE_REQUEST 이벤트일 때 요청자 정보 확인
+        if event == "TRADE_REQUEST" then
+            local requester = ...
+            -- 요청자가 있으면 바로 파트너로 저장
+            if requester and requester ~= "" then
+                tradePartnerName = NormalizeName(requester)
+            end
+        end
+
+        -- 거래창 열림: 상태 초기화 및 상대 이름 확보
+        tradePlayerAccepted = false
+        tradeTargetAccepted = false
+        tradeWillComplete = false  -- 초기화
+
+        -- TRADE_SHOW일 때만 이름 다시 확인 (이미 TRADE_REQUEST에서 설정했을 수도 있음)
+        if event == "TRADE_SHOW" then
+            local resolvedName = NormalizeName(ResolvePartnerName())
+            if resolvedName then
+                tradePartnerName = resolvedName
+            end
+        end
+
+        -- 디버그 메시지
+        if FoxChatDB and FoxChatDB.autoTrade then
+            DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 거래 시작 - 상대: " .. (tradePartnerName or "알 수 없음"))
+        end
+
+        -- 거래 시작 시 0.5초 후 초기 백업 (거래창 로드 대기)
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0.5, function()
+                if tradePartnerName then
+                    SnapshotTradeData()  -- 초기 스냅샷
+                    local tradeMessage = FormatTradeMessage()
+                    if tradeMessage then
+                        lastTradePartnerName = tradePartnerName
+                        lastTradeMessage = tradeMessage
+                    end
+                end
+            end)
+        end
+
+    elseif event == "TRADE_ACCEPT_UPDATE" then
+        local arg1, arg2 = ...  -- WoW 클래식에서는 arg1, arg2로 전달됨
+        tradePlayerAccepted = (arg1 == 1)
+        tradeTargetAccepted = (arg2 == 1)
+
+        -- 파트너 이름이 아직 없으면 다시 시도
+        if not tradePartnerName or tradePartnerName == "" then
+            local resolvedName = NormalizeName(ResolvePartnerName())
+            if resolvedName then
+                tradePartnerName = resolvedName
+            end
+        end
+
+        -- 디버그 메시지
+        if FoxChatDB and FoxChatDB.autoTrade then
+            DEFAULT_CHAT_FRAME:AddMessage(string.format("|cFFFF7D0A[FoxChat]|r 수락 상태 - Player: %d, Target: %d",
+                arg1 or 0, arg2 or 0))
+        end
+
+        -- 한쪽이라도 수락하면 데이터 스냅샷 및 백업 (WoW Classic 특성)
+        if tradePlayerAccepted or tradeTargetAccepted then
+            SnapshotTradeData()  -- 스냅샷 갱신
+
+            -- 거래 정보 백업
+            local tradeMessage = FormatTradeMessage()
+            if tradePartnerName and tradeMessage then
+                lastTradePartnerName = tradePartnerName
+                lastTradeMessage = tradeMessage
+            end
+        end
+
+        -- 양쪽 모두 수락 직전에 데이터 스냅샷
+        -- 중요: 한 번 (1,1)이 되면 tradeWillComplete를 다시 false로 되돌리지 않음
+        if tradePlayerAccepted and tradeTargetAccepted then
+            tradeWillComplete = true  -- 거래 성공 예정 플래그 설정 (되돌리지 않음)
+            SnapshotTradeData()  -- 최종 스냅샷 갱신
+
+            -- 양쪽 수락 시점에 다시 백업 (최신 데이터로 업데이트)
+            local tradeMessage = FormatTradeMessage()
+            if tradePartnerName and tradeMessage then
+                lastTradePartnerName = tradePartnerName
+                lastTradeMessage = tradeMessage
+            end
+
+            if FoxChatDB and FoxChatDB.autoTrade then
+                DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 거래 성공 예정 - 데이터 스냅샷 완료")
+            end
+        end
+        -- else 부분 제거: tradeWillComplete를 false로 되돌리지 않음
+
+    elseif event == "TRADE_REQUEST_CANCEL" then
+
+        -- 양쪽 모두 골드를 올려놓았는지 확인
+        if tradeSnapshot and tradeSnapshot.givenMoney > 0 and tradeSnapshot.gotMoney > 0 and tradePartnerName then
+            DEFAULT_CHAT_FRAME:AddMessage("|cFFFF0000[FoxChat]|r 양쪽 모두 골드를 올려놓아 거래 실패!")
+
+            -- 거래 실패 메시지 전송
+            local failMessage = string.format(
+                "[거래 실패] %s님, 양쪽 모두 골드를 올려놓으면 거래가 불가능합니다. (나: %s / 상대: %s)",
+                tradePartnerName,
+                FormatMoney(tradeSnapshot.givenMoney),
+                FormatMoney(tradeSnapshot.gotMoney)
+            )
+
+            -- 로컬 변수로 저장
+            local targetName = tradePartnerName
+            local msgToSend = failMessage
+
+            -- 지연 후 전송 (안정성)
+            if C_Timer and C_Timer.After then
+                C_Timer.After(0.2, function()
+                    if targetName and msgToSend then
+                        SendChatMessage(msgToSend, "WHISPER", nil, targetName)
+                        DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 거래 실패 안내 메시지 전송: " .. targetName)
+                    end
+                end)
+            else
+                SendChatMessage(failMessage, "WHISPER", nil, tradePartnerName)
+                DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 거래 실패 안내 메시지 전송: " .. tradePartnerName)
+            end
+        end
+
+        -- 거래 취소 명시
+        tradeWillComplete = false
+        if FoxChatDB and FoxChatDB.autoTrade then
+            DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 거래 취소 이벤트")
+        end
+
+    elseif event == "TRADE_CLOSED" then
+        -- 디버그 메시지
+        if FoxChatDB and FoxChatDB.autoTrade then
+            DEFAULT_CHAT_FRAME:AddMessage(string.format("|cFFFF7D0A[FoxChat]|r 거래 종료 - 성공예정=%s, 파트너=%s",
+                tostring(tradeWillComplete), tostring(tradePartnerName)))
+        end
+
+        -- 양쪽 모두 골드를 올려놓았는지 먼저 확인 (거래 실패 케이스)
+        if tradeSnapshot and tradeSnapshot.givenMoney > 0 and tradeSnapshot.gotMoney > 0 and tradePartnerName then
+            -- 거래가 실패한 경우
+            local failMessage = string.format(
+                "[거래 실패] %s님, 양쪽 모두 골드를 올려놓으면 거래가 불가능합니다. (나: %s / 상대: %s)",
+                tradePartnerName,
+                FormatMoney(tradeSnapshot.givenMoney),
+                FormatMoney(tradeSnapshot.gotMoney)
+            )
+
+            -- 로컬 변수로 저장
+            local targetName = tradePartnerName
+            local msgToSend = failMessage
+
+            -- 지연 후 전송 (안정성)
+            if C_Timer and C_Timer.After then
+                C_Timer.After(0.2, function()
+                    if targetName and msgToSend then
+                        SendChatMessage(msgToSend, "WHISPER", nil, targetName)
+                        DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 거래 실패 안내 메시지 전송: " .. targetName)
+                    end
+                end)
+            else
+                SendChatMessage(failMessage, "WHISPER", nil, tradePartnerName)
+                DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 거래 실패 안내 메시지 전송: " .. tradePartnerName)
+            end
+
+            -- 상태 초기화하고 종료
+            tradePlayerAccepted = false
+            tradeTargetAccepted = false
+            tradeWillComplete = false
+            tradePartnerName = nil
+            tradeSnapshot = { givenItems = {}, gotItems = {}, givenMoney = 0, gotMoney = 0 }
+            return
+        end
+
+        -- 거래 성공 판단 (tradeWillComplete 플래그 확인)
+        if tradeWillComplete and tradePartnerName then
+            local tradeMessage = FormatTradeMessage()
+
+            -- 거래 정보 백업 (UI_INFO_MESSAGE에서 사용하기 위해)
+            lastTradePartnerName = tradePartnerName
+            lastTradeMessage = tradeMessage
+
+            -- 디버그 메시지는 토글
+            if FoxChatDB and FoxChatDB.autoTrade then
+                DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 거래 성공!")
+                if tradeMessage then
+                    DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 전송 예정 메시지: " .. tradeMessage)
+                else
+                    DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r ✗ 메시지 생성 실패")
+                end
+            end
+
+            -- 귓속말 전송은 토글과 무관하게 작동 (기능 자체가 항상 작동)
+            if tradeMessage and tradeMessage ~= "" then
+                -- 중복 전송 방지: 3초 이내에 같은 메시지를 전송했다면 스킵
+                local currentTime = GetTime()
+                if lastTradeSentTime and (currentTime - lastTradeSentTime) < 3 then
+                    return
+                end
+
+                -- 양방향 거래든 일방향 거래든 무조건 메시지 전송
+                -- (상대가 애드온 있으면 둘 다 보내지만, 없으면 나만 보냄)
+
+                -- 로컬 변수로 저장 (클로저를 위해)
+                local targetName = tradePartnerName
+                local msgToSend = tradeMessage
+                -- 약간의 지연을 두고 전송 (안정성)
+                if C_Timer and C_Timer.After then
+                    C_Timer.After(0.1, function()
+                        -- 타이머 실행 시점에서도 중복 체크
+                        local now = GetTime()
+                        if lastTradeSentTime and (now - lastTradeSentTime) < 3 then
+                            return
+                        end
+
+                        if targetName and msgToSend then
+                            SendChatMessage(msgToSend, "WHISPER", nil, targetName)
+                            lastTradeSentTime = GetTime()  -- 전송 시간 기록
+                            if FoxChatDB and FoxChatDB.autoTrade then
+                                DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r ✓ 귓속말 전송 완료: " .. targetName)
+                            end
+                        else
+                        end
+                    end)
+                else
+                    SendChatMessage(tradeMessage, "WHISPER", nil, tradePartnerName)
+                    lastTradeSentTime = GetTime()  -- 전송 시간 기록
+                    if FoxChatDB and FoxChatDB.autoTrade then
+                        DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r ✓ 귓속말 전송 완료: " .. tradePartnerName)
+                    end
+                end
+            else
+            end
+        else
+            if FoxChatDB and FoxChatDB.autoTrade then
+                if not tradeWillComplete then
+                    DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 거래 취소 또는 실패")
+                elseif not tradePartnerName then
+                    DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 상대 이름 식별 실패")
+                end
+            end
+        end
+
+        -- 상태 초기화
+        tradePlayerAccepted = false
+        tradeTargetAccepted = false
+        tradeWillComplete = false
+        tradePartnerName = nil
+        tradeSnapshot = { givenItems = {}, gotItems = {}, givenMoney = 0, gotMoney = 0 }
+
+    elseif event == "UI_INFO_MESSAGE" then
+        -- UI 메시지 이벤트 (거래 완료 메시지 포함)
+        local messageType, message = ...
+
+        -- 거래 완료 메시지 감지 (영어 및 한국어)
+        if message and (string.find(message, "Trade complete") or string.find(message, "거래 완료") or
+                       string.find(message, "거래가 완료") or string.find(message, "교역 완료")) then
+
+            -- 중복 전송 방지: 3초 이내에 이미 전송했다면 스킵
+            local currentTime = GetTime()
+            if lastTradeSentTime and (currentTime - lastTradeSentTime) < 3 then
+                -- 정보만 초기화
+                tradePlayerAccepted = false
+                tradeTargetAccepted = false
+                tradeWillComplete = false
+                tradePartnerName = nil
+                tradeSnapshot = { givenItems = {}, gotItems = {}, givenMoney = 0, gotMoney = 0 }
+                lastTradePartnerName = nil
+                lastTradeMessage = nil
+                return
+            end
+
+            -- 현재 거래 정보가 있으면 우선 사용
+            if tradePartnerName and tradeWillComplete then
+                SnapshotTradeData()  -- 마지막 스냅샷
+                local tradeMessage = FormatTradeMessage()
+                if tradeMessage and tradeMessage ~= "" then
+                    SendChatMessage(tradeMessage, "WHISPER", nil, tradePartnerName)
+                    lastTradeSentTime = GetTime()  -- 전송 시간 기록
+                    if FoxChatDB and FoxChatDB.autoTrade then
+                        DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r ✓ 거래 완료 - 귓속말 전송: " .. tradePartnerName)
+                    end
+                end
+                -- 사용 후 초기화
+                tradePlayerAccepted = false
+                tradeTargetAccepted = false
+                tradeWillComplete = false
+                tradePartnerName = nil
+                tradeSnapshot = { givenItems = {}, gotItems = {}, givenMoney = 0, gotMoney = 0 }
+                lastTradePartnerName = nil
+                lastTradeMessage = nil
+
+            -- 백업된 거래 정보 사용
+            elseif lastTradePartnerName and lastTradeMessage and lastTradeMessage ~= "" then
+                SendChatMessage(lastTradeMessage, "WHISPER", nil, lastTradePartnerName)
+                lastTradeSentTime = GetTime()  -- 전송 시간 기록
+                if FoxChatDB and FoxChatDB.autoTrade then
+                    DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r ✓ 거래 완료 - 귓속말 전송: " .. lastTradePartnerName)
+                end
+                -- 백업 정보 초기화
+                lastTradePartnerName = nil
+                lastTradeMessage = nil
+
+            else
+            end
+        end
+
+    elseif event == "PARTY_INVITE_REQUEST" then
+        -- 파티 초대를 받았을 때
+        wasInvited = true
+        -- 10초 후 플래그 리셋 (초대를 거절했을 경우를 위해)
+        C_Timer.After(10, function()
+            if not IsInGroup() then
+                wasInvited = false
+            end
+        end)
+
+    elseif event == "GROUP_ROSTER_UPDATE" then
+        -- 파티 멤버 변경 감지
+        local currentSize = GetNumGroupMembers()
+
+        if IsInGroup() and not IsInRaid() then
+            if lastGroupSize == 0 and currentSize > 0 then
+                -- 내가 파티에 참가함 (초대받아서 들어간 경우만)
+                if wasInvited then
+                    SendMyJoinGreeting()
+                    wasInvited = false  -- 플래그 리셋
+                end
+
+                -- 현재 파티 멤버 목록 초기화
+                wipe(partyMembers)
+                for i = 1, currentSize - 1 do
+                    local unit = "party" .. i
+                    if UnitExists(unit) then
+                        local name = UnitName(unit)
+                        if name and name ~= "" then
+                            partyMembers[name] = true
+                        end
+                    end
+                end
+            elseif currentSize > lastGroupSize and lastGroupSize > 0 then
+                -- 다른 사람이 파티에 참가함
+                -- 약간의 딜레이 후 새 멤버 찾기 (파티 정보 업데이트 대기)
+                C_Timer.After(0.5, function()
+                    if IsInGroup() and not IsInRaid() then
+                        local newMembers = {}
+
+                        -- 현재 파티 멤버 확인
+                        for i = 1, GetNumGroupMembers() - 1 do
+                            local unit = "party" .. i
+                            if UnitExists(unit) then
+                                local name = UnitName(unit)
+                                if name and name ~= "" and not partyMembers[name] then
+                                    -- 새 멤버 발견
+                                    table.insert(newMembers, name)
+                                    partyMembers[name] = true
+                                end
+                            end
+                        end
+
+                        -- 새 멤버들에게 인사
+                        for _, memberName in ipairs(newMembers) do
+                            SendOthersJoinGreeting(memberName)
+                        end
+                    end
+                end)
+            elseif currentSize < lastGroupSize then
+                -- 누군가 파티를 떠남 - 멤버 목록 업데이트
+                local currentMembers = {}
+                for i = 1, currentSize - 1 do
+                    local unit = "party" .. i
+                    if UnitExists(unit) then
+                        local name = UnitName(unit)
+                        if name and name ~= "" then
+                            currentMembers[name] = true
+                        end
+                    end
+                end
+                partyMembers = currentMembers
+            end
+        else
+            -- 파티가 아니면 멤버 목록 초기화
+            wipe(partyMembers)
+            -- 파티에서 나갔을 때 플래그 리셋
+            if lastGroupSize > 0 and currentSize == 0 then
+                wasInvited = false
+                hasGreetedMyJoin = false  -- 인사 플래그도 리셋
+            end
+        end
+
+        lastGroupSize = currentSize
+
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        -- 접속 시 내구도 체크
+        C_Timer.After(5, CheckDurability)
+
+    elseif event == "UPDATE_INVENTORY_DURABILITY" then
+        -- 내구도 변경 시 체크
+        CheckDurability()
+
+    elseif event == "UNIT_AURA" then
+        -- 버프 변경 시 체크
+        local unit = ...
+        if unit == "player" then
+            -- 버프가 사라진 후 3초 후 체크 (즉각 요청 방지)
+            C_Timer.After(3, CheckAndRequestBuffs)
+        end
+    end
+end)
