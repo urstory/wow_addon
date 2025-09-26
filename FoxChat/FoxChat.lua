@@ -79,6 +79,8 @@ end
 -- 디버그 모드
 local debugMode = false
 
+-- 디버그 모드는 이벤트 핸들러 등록 후 설정
+
 -- 원본 AddMessage 함수들을 저장
 local originalAddMessage = {}
 local originalSendChatMessage = SendChatMessage
@@ -131,11 +133,23 @@ end
 -- 필터링 키워드 업데이트
 local function UpdateKeywords()
     ParseKeywords(FoxChatDB.keywords, keywords)
+    -- 디버그: 키워드 업데이트 후 개수 출력
+    local count = 0
+    for _ in pairs(keywords) do count = count + 1 end
+    if debugMode then
+        print(string.format("|cFF00FFFF[FoxChat] 키워드 업데이트됨: %d개|r", count))
+    end
 end
 
 -- 무시 키워드 업데이트
 local function UpdateIgnoreKeywords()
     ParseKeywords(FoxChatDB.ignoreKeywords, ignoreKeywords)
+    -- 디버그: 무시 키워드 업데이트 후 개수 출력
+    local count = 0
+    for _ in pairs(ignoreKeywords) do count = count + 1 end
+    if debugMode then
+        print(string.format("|cFFFF00FF[FoxChat] 무시 키워드 업데이트됨: %d개|r", count))
+    end
 end
 
 -- 활성화된 토스트들의 위치를 재정렬
@@ -540,6 +554,10 @@ local function HighlightKeywords(message, channelGroup, author)
     -- 메시지 내용에 무시 키워드가 있는지 체크
     for lowerIgnore, originalIgnore in pairs(ignoreKeywords) do
         if string.find(lowerMsgContent, lowerIgnore, 1, true) then
+            -- 디버그: 무시 키워드 매칭
+            if debugMode then
+                print(string.format("|cFFFF00FF[FoxChat] 무시할 문구 '%s'가 발견됨. 필터링 건너뜀.|r", originalIgnore))
+            end
             -- 메시지에 무시 키워드가 있으면 필터링하지 않음
             return message, false
         end
@@ -547,6 +565,10 @@ local function HighlightKeywords(message, channelGroup, author)
 
     for lowerKeyword, originalKeyword in pairs(keywords) do
         if string.find(lowerMsgContent, lowerKeyword, 1, true) then
+            -- 디버그: 키워드 매칭
+            if debugMode then
+                print(string.format("|cFF00FFFF[FoxChat] 키워드 '%s'가 메시지에서 매칭됨!|r", originalKeyword))
+            end
             foundKeyword = true
 
             -- 키워드를 하이라이트 (원본 msgContent에 적용)
@@ -690,6 +712,18 @@ local function ChatFilter(self, event, msg, author, ...)
     local channelType = event:match("CHAT_MSG_(.+)")
     local channelName = select(7, ...) -- 채널 이름 (번호 채널용)
     local channelGroup = GetChannelGroup(channelType, channelName)
+
+    -- 디버그 출력 간소화
+    if debugMode and channelName then
+        local keywordCount = 0
+        for _ in pairs(keywords) do keywordCount = keywordCount + 1 end
+
+        print(string.format("|cFFFFFF00[FoxChat] 채널: %s, 그룹: %s, 활성화: %s, 키워드수: %d|r",
+            channelName or "nil",
+            channelGroup or "nil",
+            tostring(FoxChatDB.channelGroups[channelGroup] or false),
+            keywordCount))
+    end
 
     if not channelGroup or not FoxChatDB.channelGroups[channelGroup] then
         return false
@@ -1697,6 +1731,11 @@ end)
 -- 공개 함수들
 function FoxChat:UpdateKeywords()
     UpdateKeywords()
+    if debugMode then
+        local count = 0
+        for _ in pairs(keywords) do count = count + 1 end
+        print(string.format("|cFF00FFFF[FoxChat:UpdateKeywords] 키워드 업데이트 완료: %d개|r", count))
+    end
 end
 
 -- ShowToast 함수를 FoxChat 테이블에 추가
@@ -1729,6 +1768,41 @@ function FoxChat:OpenConfig()
     -- ShowConfig 함수 호출 (FoxChat_Config.lua에서 정의됨)
     if FoxChat.ShowConfig then
         FoxChat:ShowConfig()
+    end
+end
+
+-- 디버그 명령어 추가
+SLASH_FOXCHATDEBUG1 = "/fcdbg"
+SLASH_FOXCHATDEBUG2 = "/foxchatdebug"
+SlashCmdList["FOXCHATDEBUG"] = function()
+    debugMode = not debugMode
+    if debugMode then
+        print("|cFF00FF00[FoxChat] 디버그 모드 활성화됨|r")
+
+        -- 키워드 개수와 목록 출력
+        local keywordList = {}
+        local keywordCount = 0
+        for lower, original in pairs(keywords) do
+            table.insert(keywordList, original)
+            keywordCount = keywordCount + 1
+        end
+        print("|cFFFFFF00[FoxChat] 키워드 개수: " .. keywordCount .. "|r")
+        if keywordCount > 0 then
+            print("|cFF00FF00[FoxChat] 현재 키워드: " .. table.concat(keywordList, ", ") .. "|r")
+        end
+
+        -- 무시 키워드 개수와 목록 출력
+        local ignoreList = {}
+        local ignoreCount = 0
+        for lower, original in pairs(ignoreKeywords) do
+            table.insert(ignoreList, original)
+            ignoreCount = ignoreCount + 1
+        end
+        if ignoreCount > 0 then
+            print("|cFFFF00FF[FoxChat] 무시할 문구: " .. table.concat(ignoreList, ", ") .. "|r")
+        end
+    else
+        print("|cFFFF0000[FoxChat] 디버그 모드 비활성화됨|r")
     end
 end
 

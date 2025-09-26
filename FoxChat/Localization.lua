@@ -10,9 +10,9 @@ local L = {
     -- 설정창
     ["CONFIG_TITLE"] = "FoxChat Settings",
     ["KEYWORDS_LABEL"] = "Filter Keywords:",
-    ["KEYWORDS_HELP"] = "Enter words to highlight (one per line, max 8)",
+    ["KEYWORDS_HELP"] = "Enter words to highlight (comma separated)",
     ["IGNORE_KEYWORDS_LABEL"] = "Ignore Keywords:",
-    ["IGNORE_KEYWORDS_HELP"] = "Messages with these words won't be filtered (one per line, max 8)",
+    ["IGNORE_KEYWORDS_HELP"] = "Messages with these words won't be filtered (comma separated)",
     ["ENABLED"] = "Enable FoxChat",
     ["PLAY_SOUND"] = "Play sound alert",
     ["CHANNELS_AND_COLORS"] = "Channel Monitoring & Colors:",
@@ -100,9 +100,9 @@ if locale == "koKR" then
         -- 설정창
         ["CONFIG_TITLE"] = "FoxChat 설정",
         ["KEYWORDS_LABEL"] = "필터링 문구:",
-        ["KEYWORDS_HELP"] = "강조할 단어를 입력 (한 줄에 하나씩, 최대 8개)",
+        ["KEYWORDS_HELP"] = "강조할 단어를 입력 (쉼표로 구분)",
         ["IGNORE_KEYWORDS_LABEL"] = "무시할 문구:",
-        ["IGNORE_KEYWORDS_HELP"] = "이 단어가 포함된 메시지는 필터링 안함 (한 줄에 하나씩, 최대 8개)",
+        ["IGNORE_KEYWORDS_HELP"] = "이 단어가 포함된 메시지는 필터링 안함 (쉼표로 구분)",
         ["ENABLED"] = "FoxChat 활성화",
         ["PLAY_SOUND"] = "소리 알림 재생",
         ["CHANNELS_AND_COLORS"] = "채널 모니터링 및 색상:",

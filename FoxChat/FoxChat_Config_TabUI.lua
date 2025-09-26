@@ -447,12 +447,15 @@ function FoxChat:ShowConfig()
         if FoxChatDB then
             local text = self:GetText() or ""
             local keywords = {}
-            for line in string.gmatch(text, "[^\n]+") do
-                local trimmed = string.gsub(line, "^%s*(.-)%s*$", "%1")
+
+            -- 쉼표로만 구분
+            for keyword in string.gmatch(text, "[^,]+") do
+                local trimmed = string.gsub(keyword, "^%s*(.-)%s*$", "%1")
                 if trimmed ~= "" then
                     table.insert(keywords, trimmed)
                 end
             end
+
             FoxChatDB.keywords = keywords
             if FoxChat and FoxChat.UpdateKeywords then
                 FoxChat:UpdateKeywords()
@@ -460,11 +463,11 @@ function FoxChat:ShowConfig()
         end
     end)
 
-    -- 키워드 배열을 문자열로 변환 (줄바꿈으로 구분)
+    -- 키워드 배열을 문자열로 변환 (쉼표로 구분)
     local keywordText = ""
     if FoxChatDB and FoxChatDB.keywords then
         if type(FoxChatDB.keywords) == "table" then
-            keywordText = table.concat(FoxChatDB.keywords, "\n")
+            keywordText = table.concat(FoxChatDB.keywords, ", ")
         else
             keywordText = tostring(FoxChatDB.keywords)
         end
@@ -490,23 +493,26 @@ function FoxChat:ShowConfig()
         if FoxChatDB then
             local text = self:GetText() or ""
             local keywords = {}
-            for line in string.gmatch(text, "[^\n]+") do
-                local trimmed = string.gsub(line, "^%s*(.-)%s*$", "%1")
+
+            -- 쉼표로만 구분
+            for keyword in string.gmatch(text, "[^,]+") do
+                local trimmed = string.gsub(keyword, "^%s*(.-)%s*$", "%1")
                 if trimmed ~= "" then
                     table.insert(keywords, trimmed)
                 end
             end
+
             FoxChatDB.ignoreKeywords = keywords
             if FoxChat and FoxChat.UpdateIgnoreKeywords then
                 FoxChat:UpdateIgnoreKeywords()
             end
         end
     end)
-    -- 무시 키워드 배열을 문자열로 변환 (줄바꿈으로 구분)
+    -- 무시 키워드 배열을 문자열로 변환 (쉼표로 구분)
     local ignoreText = ""
     if FoxChatDB and FoxChatDB.ignoreKeywords then
         if type(FoxChatDB.ignoreKeywords) == "table" then
-            ignoreText = table.concat(FoxChatDB.ignoreKeywords, "\n")
+            ignoreText = table.concat(FoxChatDB.ignoreKeywords, ", ")
         else
             ignoreText = tostring(FoxChatDB.ignoreKeywords)
         end
