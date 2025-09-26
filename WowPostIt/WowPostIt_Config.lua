@@ -312,8 +312,8 @@ function addon:ShowNoteWindow()
         lockButton:SetPoint("TOPRIGHT", editFrame, "TOPRIGHT", -28, -6)  -- 스크롤바를 피해 왼쪽으로 이동
         lockButton:SetFrameLevel(editFrame:GetFrameLevel() + 5)  -- 더 높은 레벨로 설정
 
-        -- 잠금 상태 변수
-        noteWindow.isLocked = false
+        -- 잠금 상태 변수 (제거 - 노트별로 관리)
+        -- noteWindow.isLocked = false
 
         -- 버튼 배경 (선택사항 - 버튼처럼 보이게 하려면)
         local buttonBg = lockButton:CreateTexture(nil, "BACKGROUND")
@@ -333,13 +333,25 @@ function addon:ShowNoteWindow()
         -- 하이라이트 효과
         lockButton:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
 
+        -- 현재 노트의 잠금 상태를 가져오는 함수
+        local function getCurrentNoteLockStatus()
+            if not currentNoteId then return false end
+            for _, note in ipairs(WowPostItDB.notes) do
+                if note.id == currentNoteId then
+                    return note.isLocked or false
+                end
+            end
+            return false
+        end
+
         -- 버튼 툴팁 및 마우스 오버 효과
         lockButton:SetScript("OnEnter", function(self)
             -- 마우스 오버 시 배경 밝게
             self.bg:SetVertexColor(0.3, 0.3, 0.3, 0.3)
 
             GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-            if noteWindow.isLocked then
+            local isLocked = getCurrentNoteLockStatus()
+            if isLocked then
                 GameTooltip:SetText(L["UNLOCK_EDIT"] or "편집 잠금 해제", 1, 1, 1)
                 GameTooltip:AddLine(L["UNLOCK_EDIT_DESC"] or "클릭하여 편집을 활성화합니다", 0.8, 0.8, 0.8)
             else
@@ -357,14 +369,19 @@ function addon:ShowNoteWindow()
 
         -- 버튼 클릭 이벤트
         lockButton:SetScript("OnClick", function(self)
-            noteWindow.isLocked = not noteWindow.isLocked
+            if not currentNoteId then return end
 
-            if noteWindow.isLocked then
+            local isLocked = getCurrentNoteLockStatus()
+            isLocked = not isLocked
+
+            -- DB에 잠금 상태 저장
+            addon.SaveNote(currentNoteId, noteEditBox:GetText(), isLocked)
+
+            if isLocked then
                 -- 잠긴 상태
                 self.icon:SetTexture("Interface\\AddOns\\WowPostIt\\k2.png")  -- 닫힌 자물쇠 아이콘
                 noteEditBox:EnableMouse(false)
                 noteEditBox:EnableKeyboard(false)
-                -- noteEditBox:SetTextColor(0.5, 0.5, 0.5)  -- 텍스트 색상 변경 제거
                 noteEditBox:ClearFocus()
                 print("|cFFFFFF00WowPostIt:|r " .. (L["EDIT_LOCKED"] or "편집이 잠겼습니다"))
             else
@@ -372,7 +389,6 @@ function addon:ShowNoteWindow()
                 self.icon:SetTexture("Interface\\AddOns\\WowPostIt\\k1.png")  -- 열린 자물쇠 아이콘
                 noteEditBox:EnableMouse(true)
                 noteEditBox:EnableKeyboard(true)
-                -- noteEditBox:SetTextColor(1, 1, 1)  -- 텍스트 색상 변경 제거
                 print("|cFFFFFF00WowPostIt:|r " .. (L["EDIT_UNLOCKED"] or "편집이 해제되었습니다"))
             end
         end)
@@ -478,6 +494,19 @@ function addon:ShowNoteWindow()
                         0.5
                     )
                 end
+
+                -- 저장된 잠금 상태 복원
+                local isLocked = note.isLocked or false
+                if isLocked then
+                    noteWindow.lockButton.icon:SetTexture("Interface\\AddOns\\WowPostIt\\k2.png")  -- 닫힌 자물쇠 아이콘
+                    noteEditBox:EnableMouse(false)
+                    noteEditBox:EnableKeyboard(false)
+                else
+                    noteWindow.lockButton.icon:SetTexture("Interface\\AddOns\\WowPostIt\\k1.png")  -- 열린 자물쇠 아이콘
+                    noteEditBox:EnableMouse(true)
+                    noteEditBox:EnableKeyboard(true)
+                end
+
                 break
             end
         end
@@ -713,16 +742,19 @@ function addon:UpdateNoteList()
             WowPostItDB.selectedNoteId = currentNoteId
             noteEditBox:SetText(note.content)
 
-            -- 잠금 상태 해제
-            if noteWindow.isLocked then
-                noteWindow.isLocked = false
+            -- 선택한 노트의 잠금 상태 복원
+            local isLocked = note.isLocked or false
+            if isLocked then
+                noteWindow.lockButton.icon:SetTexture("Interface\\AddOns\\WowPostIt\\k2.png")  -- 닫힌 자물쇠 아이콘
+                noteEditBox:EnableMouse(false)
+                noteEditBox:EnableKeyboard(false)
+                noteEditBox:ClearFocus()
+            else
                 noteWindow.lockButton.icon:SetTexture("Interface\\AddOns\\WowPostIt\\k1.png")  -- 열린 자물쇠 아이콘
                 noteEditBox:EnableMouse(true)
                 noteEditBox:EnableKeyboard(true)
-                -- noteEditBox:SetTextColor(1, 1, 1)  -- 텍스트 색상 변경 제거
+                noteEditBox:SetFocus()
             end
-
-            noteEditBox:SetFocus()
         end)
         
         table.insert(listButtons, button)

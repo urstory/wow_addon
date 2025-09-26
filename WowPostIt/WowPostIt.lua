@@ -273,11 +273,15 @@ addon.GetNotes = function()
     return WowPostItDB.notes or {}
 end
 
-addon.SaveNote = function(noteId, content)
+addon.SaveNote = function(noteId, content, isLocked)
     for i, note in ipairs(WowPostItDB.notes) do
         if note.id == noteId then
             note.content = content
             note.modified = date("%Y-%m-%d %H:%M:%S")
+            -- 잠금 상태가 전달되면 저장
+            if isLocked ~= nil then
+                note.isLocked = isLocked
+            end
             return true
         end
     end
