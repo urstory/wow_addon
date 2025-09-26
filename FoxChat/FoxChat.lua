@@ -70,6 +70,12 @@ local function IsEmptyOrWhitespace(str)
     return not str or string.gsub(str, "%s+", "") == ""
 end
 
+-- UTF-8 문자열의 바이트 길이 계산
+function GetUTF8ByteLength(str)
+    if not str then return 0 end
+    return string.len(str)
+end
+
 -- 디버그 모드
 local debugMode = false
 
@@ -101,8 +107,12 @@ local function ParseKeywords(keywordData, targetTable)
     if type(keywordData) == "table" then
         for _, keyword in ipairs(keywordData) do
             if keyword and keyword ~= "" then
-                -- 대소문자 구분 없이 저장
-                targetTable[string.lower(keyword)] = keyword
+                -- 앞뒤 공백 제거
+                local trimmed = string.gsub(keyword, "^%s*(.-)%s*$", "%1")
+                if trimmed ~= "" then
+                    -- 대소문자 구분 없이 저장
+                    targetTable[string.lower(trimmed)] = trimmed
+                end
             end
         end
     -- 문자열인 경우
@@ -710,6 +720,110 @@ local function ChatFilter(self, event, msg, author, ...)
     return false  -- 변경 없이 통과
 end
 
+-- UTF-8 유틸리티 모듈
+local UTF8 = {}
+
+-- UTF-8 문자열의 글자 수를 계산하는 함수 (WoW 내장 함수 활용)
+function UTF8.len(str)
+    if not str then return 0 end
+    -- WoW에 내장된 strlenutf8 함수 사용
+    if type(_G.strlenutf8) == "function" then
+        return strlenutf8(str)
+    end
+    -- 폴백: 순수 Lua 구현
+    local len, i = 0, 1
+    local bytes = #str
+    while i <= bytes do
+        local c = str:byte(i)
+        local n
+        if c < 0x80 then
+            n = 1
+        elseif c < 0xE0 then
+            n = 2
+        elseif c < 0xF0 then
+            n = 3
+        elseif c < 0xF5 then
+            n = 4
+        else
+            n = 1
+        end
+        i = i + n
+        len = len + 1
+    end
+    return len
+end
+
+-- UTF-8 문자열을 바이트 수 기준으로 안전하게 자르는 함수
+function UTF8.trimByBytes(str, byteLimit)
+    if not str or str == "" then return "" end
+    byteLimit = byteLimit or 255
+
+    -- 이미 제한 내에 있으면 그대로 반환
+    if #str <= byteLimit then
+        return str
+    end
+
+    -- 유효한 UTF-8 경계를 찾아서 자르기
+    local validPos = 0  -- 마지막으로 확인된 유효한 위치
+    local i = 1
+
+    while i <= #str and i <= byteLimit do
+        local b = str:byte(i)
+        if not b then
+            break
+        end
+
+        local charLen = 1
+        if b < 0x80 then
+            -- ASCII 문자 (1바이트)
+            charLen = 1
+        elseif b >= 0xF0 then
+            -- 4바이트 문자
+            charLen = 4
+        elseif b >= 0xE0 then
+            -- 3바이트 문자 (한글 등)
+            charLen = 3
+        elseif b >= 0xC0 then
+            -- 2바이트 문자
+            charLen = 2
+        else
+            -- 잘못된 UTF-8 시작 바이트
+            break
+        end
+
+        -- 전체 문자가 byteLimit 내에 들어가는지 확인
+        if i + charLen - 1 <= byteLimit then
+            -- 이 문자를 포함할 수 있음
+            validPos = i + charLen - 1
+            i = i + charLen
+        else
+            -- 이 문자를 포함할 수 없음
+            break
+        end
+    end
+
+    -- 유효한 위치까지 자르기
+    if validPos > 0 then
+        return str:sub(1, validPos)
+    else
+        -- 첫 문자도 들어갈 수 없는 경우 (매우 드물지만)
+        -- 최소한 빈 문자열이 아닌 적절한 처리
+        return ""
+    end
+end
+
+-- 메시지 검증 함수 (글자수와 바이트수 체크)
+function UTF8.validate(str)
+    if not str then
+        return { charLen = 0, byteLen = 0, okForChat = true }
+    end
+    return {
+        charLen = UTF8.len(str),
+        byteLen = #str,
+        okForChat = (#str <= 255)
+    }
+end
+
 -- SendChatMessage 후킹 (말머리/말꼬리)
 local function HookSendChatMessage()
     SendChatMessage = function(message, chatType, language, channel)
@@ -729,7 +843,7 @@ local function HookSendChatMessage()
                     break
                 end
             end
-            
+
             -- 위상 메시지가 아닌 경우에만 말머리/말꼬리 처리
             if not isPhaseMessage then
                 -- 채널 타입 확인
@@ -739,12 +853,12 @@ local function HookSendChatMessage()
                 elseif chatType == "INSTANCE_CHAT" then
                     channelKey = "INSTANCE_CHAT"
                 end
-                
+
                 -- 해당 채널에 말머리/말꼬리 적용 여부 확인
                 if FoxChatDB.prefixSuffixChannels and FoxChatDB.prefixSuffixChannels[channelKey] then
                     local prefix = FoxChatDB.prefix or ""
                     local suffix = FoxChatDB.suffix or ""
-                    
+
                     -- 말머리와 말꼬리 추가
                     if prefix ~= "" or suffix ~= "" then
                         message = prefix .. message .. suffix
@@ -752,9 +866,17 @@ local function HookSendChatMessage()
                 end
             end
         end
-        
+
+        -- WoW 메시지 길이 제한: 255바이트
+        -- 바이트 수가 255를 초과하면 UTF-8 경계를 고려하여 자르기
+        if #message > 255 then
+            message = UTF8.trimByBytes(message, 255)
+        end
+
         -- 원본 함수 호출
-        originalSendChatMessage(message, chatType, language, channel)
+        if message and message ~= "" then
+            originalSendChatMessage(message, chatType, language, channel)
+        end
     end
 end
 
@@ -994,6 +1116,17 @@ local function CreateAdButton()
                 end
 
                 if targetChannel then
+                    -- 메시지 길이 체크 (255바이트 제한)
+                    if #message > 255 then
+                        message = UTF8.trimByBytes(message, 255)
+                    end
+
+                    -- 빈 메시지 체크
+                    if not message or message == "" then
+                        print("|cFFFF7D0A[FoxChat]|r 광고 메시지가 너무 길어 전송할 수 없습니다.")
+                        return
+                    end
+
                     -- 광고 메시지 플래그 설정
                     isAdvertisementMessage = true
 
@@ -1157,6 +1290,11 @@ local function CreateFirstComeButton()
         else
             print("|cFFFF7D0A[FoxChat]|r 파티나 공격대에 속해있지 않습니다.")
             return
+        end
+
+        -- 메시지 길이 체크 (255바이트 제한)
+        if #message > 255 then
+            message = UTF8.trimByBytes(message, 255)
         end
 
         -- 메시지 전송
@@ -1983,11 +2121,21 @@ local function SendMyJoinGreeting()
     if not FoxChatDB.partyGreetMyJoinMessages or #FoxChatDB.partyGreetMyJoinMessages == 0 then return end
     if hasGreetedMyJoin then return end  -- 이미 인사했으면 스킵
 
+    -- 유효한 메시지만 필터링 (공백 제거)
+    local validMessages = {}
+    for _, msg in ipairs(FoxChatDB.partyGreetMyJoinMessages) do
+        local trimmed = string.gsub(msg, "^%s*(.-)%s*$", "%1")
+        if trimmed ~= "" then
+            table.insert(validMessages, msg)
+        end
+    end
+
+    if #validMessages == 0 then return end  -- 유효한 메시지가 없으면 중단
+
     hasGreetedMyJoin = true
 
     -- 랜덤 메시지 선택
-    local messages = FoxChatDB.partyGreetMyJoinMessages
-    local message = messages[math.random(#messages)]
+    local message = validMessages[math.random(#validMessages)]
 
     -- 변수 치환
     local myName = UnitName("player")
@@ -2010,6 +2158,17 @@ local function SendOthersJoinGreeting(targetName)
     if not FoxChatDB.partyGreetOthersJoinMessages or #FoxChatDB.partyGreetOthersJoinMessages == 0 then return end
     if not targetName or targetName == "" then return end
 
+    -- 유효한 메시지만 필터링 (공백 제거)
+    local validMessages = {}
+    for _, msg in ipairs(FoxChatDB.partyGreetOthersJoinMessages) do
+        local trimmed = string.gsub(msg, "^%s*(.-)%s*$", "%1")
+        if trimmed ~= "" then
+            table.insert(validMessages, msg)
+        end
+    end
+
+    if #validMessages == 0 then return end  -- 유효한 메시지가 없으면 중단
+
     -- 쿨다운 체크 (10초)
     local now = GetTime()
     if targetName and partyGreetCooldown[targetName] and (now - partyGreetCooldown[targetName]) < 10 then
@@ -2020,8 +2179,7 @@ local function SendOthersJoinGreeting(targetName)
     end
 
     -- 랜덤 메시지 선택
-    local messages = FoxChatDB.partyGreetOthersJoinMessages
-    local message = messages[math.random(#messages)]
+    local message = validMessages[math.random(#validMessages)]
 
     -- 변수 치환
     message = string.gsub(message, "{target}", targetName)
@@ -2088,89 +2246,6 @@ local function CheckDurability()
     end
 end
 
--- 자동 버프 요청
-local lastBuffRequest = {}  -- 버프별 마지막 요청 시간
-
-local function CheckAndRequestBuffs()
-    if not FoxChatDB or not FoxChatDB.autoBuffRequest then return end
-    if not IsInGroup() and not IsInRaid() then return end  -- 파티/레이드 중일 때만
-
-    local cooldown = (FoxChatDB.buffRequestCooldown or 5) * 60  -- 분을 초로 변환
-    local now = GetTime()
-    local playerClass = select(2, UnitClass("player"))
-
-    -- 클래스별 필요 버프 체크
-    local neededBuffs = {}
-
-    -- 모든 클래스 공통
-    local commonBuffs = {
-        ["지능의 인장"] = {"마법사", "법사"},
-        ["왕의 축복"] = {"성기사"},
-        ["야생의 징표"] = {"드루이드"},
-        ["신의 권능: 인내"] = {"사제"},
-    }
-
-    -- 클래스별 특수 버프
-    if playerClass == "WARRIOR" or playerClass == "ROGUE" or playerClass == "HUNTER" then
-        commonBuffs["힘의 축복"] = {"성기사"}
-    elseif playerClass == "MAGE" or playerClass == "WARLOCK" or playerClass == "PRIEST" then
-        commonBuffs["지혜의 축복"] = {"성기사"}
-    end
-
-    -- 버프 체크
-    for buffName, providers in pairs(commonBuffs) do
-        local hasBuff = false
-        for i = 1, 40 do
-            local name = UnitBuff("player", i)
-            if not name then break end
-            if string.find(name, buffName) then
-                hasBuff = true
-                break
-            end
-        end
-
-        if not hasBuff then
-            -- 쿨다운 체크
-            if not lastBuffRequest[buffName] or (now - lastBuffRequest[buffName]) > cooldown then
-                -- 제공자가 파티에 있는지 확인
-                local hasProvider = false
-                local numMembers = IsInRaid() and GetNumGroupMembers() or GetNumGroupMembers()
-
-                for i = 1, numMembers do
-                    local unit = IsInRaid() and "raid"..i or "party"..i
-                    if UnitExists(unit) then
-                        local _, unitClass = UnitClass(unit)
-                        for _, provider in ipairs(providers) do
-                            if unitClass and string.find(unitClass, provider) then
-                                hasProvider = true
-                                break
-                            end
-                        end
-                    end
-                end
-
-                if hasProvider then
-                    table.insert(neededBuffs, buffName)
-                end
-            end
-        end
-    end
-
-    -- 버프 요청
-    if #neededBuffs > 0 then
-        local message = FoxChatDB.buffRequestMessage or "버프 부탁드립니다~"
-        if IsInRaid() then
-            SendChatMessage(message, "RAID")
-        else
-            SendChatMessage(message, "PARTY")
-        end
-
-        -- 쿨다운 업데이트
-        for _, buff in ipairs(neededBuffs) do
-            lastBuffRequest[buff] = now
-        end
-    end
-end
 
 -- 이벤트 핸들러 추가
 local autoEventFrame = CreateFrame("Frame")
@@ -2183,7 +2258,6 @@ autoEventFrame:RegisterEvent("UI_INFO_MESSAGE")  -- 거래 완료 메시지 감�
 autoEventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
 autoEventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 autoEventFrame:RegisterEvent("UPDATE_INVENTORY_DURABILITY")
-autoEventFrame:RegisterEvent("UNIT_AURA")
 autoEventFrame:RegisterEvent("PARTY_INVITE_REQUEST")  -- 파티 초대 받음
 
 local lastGroupSize = 0
@@ -2590,13 +2664,5 @@ autoEventFrame:SetScript("OnEvent", function(self, event, ...)
     elseif event == "UPDATE_INVENTORY_DURABILITY" then
         -- 내구도 변경 시 체크
         CheckDurability()
-
-    elseif event == "UNIT_AURA" then
-        -- 버프 변경 시 체크
-        local unit = ...
-        if unit == "player" then
-            -- 버프가 사라진 후 3초 후 체크 (즉각 요청 방지)
-            C_Timer.After(3, CheckAndRequestBuffs)
-        end
     end
 end)

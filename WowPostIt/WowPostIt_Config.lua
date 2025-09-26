@@ -8,6 +8,101 @@ local noteEditBox = nil
 local currentNoteId = nil
 local listButtons = {}
 
+-- 재사용 가능한 TextArea 생성 함수 (안정적인 버전)
+local function CreateTextArea(parent, width, height, maxLetters)
+    -- 배경 프레임
+    local bg = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    bg:SetSize(width, height)
+    bg:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 16,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 }
+    })
+    bg:SetBackdropColor(0, 0, 0, 0.8)
+
+    -- ScrollFrame 생성
+    local scrollFrame = CreateFrame("ScrollFrame", nil, bg, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", 8, -8)
+    scrollFrame:SetPoint("BOTTOMRIGHT", -26, 8)
+
+    -- EditBox 생성
+    local editBox = CreateFrame("EditBox", nil, scrollFrame)
+    editBox:SetMultiLine(true)
+    editBox:SetAutoFocus(false)
+    editBox:SetWidth(scrollFrame:GetWidth() - 5)
+    editBox:SetHeight(2000)  -- 충분히 큰 고정 높이
+    editBox:SetMaxLetters(maxLetters or 5000)
+    editBox:SetTextInsets(5, 5, 5, 5)
+
+    -- 폰트 설정 (줄 간격 문제 해결)
+    local font, size = ChatFontNormal:GetFont()
+    editBox:SetFont(font, size, "")
+    editBox:SetSpacing(0)  -- 줄 간격을 0으로 설정하여 커서 정렬
+
+    -- ScrollChild로 설정
+    scrollFrame:SetScrollChild(editBox)
+
+    -- ESC 키로 포커스 해제
+    editBox:SetScript("OnEscapePressed", function(self)
+        self:ClearFocus()
+    end)
+
+    -- 커서 위치 변경 시 자동 스크롤 (안전한 버전)
+    editBox.isScrolling = false
+    editBox:SetScript("OnCursorChanged", function(self, x, y, w, h)
+        if self.isScrolling then return end  -- 재귀 방지
+
+        local scrollOffset = scrollFrame:GetVerticalScroll()
+        local scrollHeight = scrollFrame:GetHeight()
+        local cursorTop = -y
+        local cursorBottom = -y + h
+
+        -- 스크롤 업데이트가 필요한 경우만 처리
+        if cursorTop < scrollOffset then
+            self.isScrolling = true
+            scrollFrame:SetVerticalScroll(math.max(0, cursorTop))
+            C_Timer.After(0.01, function() self.isScrolling = false end)
+        elseif cursorBottom > (scrollOffset + scrollHeight - 30) then  -- 여유 공간을 30으로 증가
+            self.isScrolling = true
+            scrollFrame:SetVerticalScroll(math.max(0, cursorBottom - scrollHeight + 30))  -- 더 많이 스크롤
+            C_Timer.After(0.01, function() self.isScrolling = false end)
+        end
+    end)
+
+    -- 배경 클릭 시 EditBox로 포커스
+    bg:EnableMouse(true)
+    bg:SetScript("OnMouseDown", function(self, button)
+        if button == "LeftButton" then
+            editBox:SetFocus()
+        end
+    end)
+
+    -- 마우스 휠 스크롤
+    scrollFrame:EnableMouseWheel(true)
+    scrollFrame:SetScript("OnMouseWheel", function(self, delta)
+        local current = self:GetVerticalScroll()
+        local maxScroll = self:GetVerticalScrollRange()
+        local scrollStep = 20
+
+        if delta > 0 then
+            self:SetVerticalScroll(math.max(0, current - scrollStep))
+        else
+            self:SetVerticalScroll(math.min(maxScroll, current + scrollStep))
+        end
+    end)
+
+    -- EditBox 크기를 실제로 맞추기 위한 지연 실행
+    C_Timer.After(0.1, function()
+        local w = scrollFrame:GetWidth()
+        if w and w > 0 then
+            editBox:SetWidth(w - 5)
+        end
+    end)
+
+    return bg, editBox, scrollFrame
+end
+
 -- 메모 창 생성
 function addon:ShowNoteWindow()
     if noteWindow and noteWindow:IsShown() then
@@ -283,39 +378,36 @@ function addon:ShowNoteWindow()
         end)
 
         noteWindow.lockButton = lockButton
-        
-        -- 스크롤 가능한 편집 박스
-        local editScrollFrame = CreateFrame("ScrollFrame", "WowPostItEditScroll", editFrame, "UIPanelScrollFrameTemplate")
-        editScrollFrame:SetPoint("TOPLEFT", editFrame, "TOPLEFT", 5, -5)
-        editScrollFrame:SetPoint("BOTTOMRIGHT", editFrame, "BOTTOMRIGHT", -25, 5)
-        
-        -- 편집 박스
-        noteEditBox = CreateFrame("EditBox", nil, editScrollFrame)
-        noteEditBox:SetMultiLine(true)
-        noteEditBox:SetMaxLetters(5000)
-        noteEditBox:SetSize(370, 320)
-        noteEditBox:SetAutoFocus(false)
-        noteEditBox:SetFontObject("ChatFontNormal")
-        noteEditBox:SetScript("OnEscapePressed", function(self)
-            self:ClearFocus()
-        end)
-        
-        -- 포스트잇 배경
-        local editBg = editScrollFrame:CreateTexture(nil, "BACKGROUND")
-        editBg:SetAllPoints(editScrollFrame)
+
+        -- CreateTextArea를 사용한 편집 영역 생성
+        local editAreaBg, editBox, editScrollFrame = CreateTextArea(editFrame, 390, 340, 5000)
+        editAreaBg:SetPoint("TOPLEFT", editFrame, "TOPLEFT", 0, 0)
+        editAreaBg:SetPoint("BOTTOMRIGHT", editFrame, "BOTTOMRIGHT", 0, 0)
+
+        -- 포스트잇 배경색 적용
+        editAreaBg:SetBackdropColor(1.0, 1.0, 0.6, 0.3)  -- 기본 노란색
+
+        -- 포스트잇 배경 텍스처 추가
+        local editBg = editAreaBg:CreateTexture(nil, "BACKGROUND")
+        editBg:SetAllPoints(editAreaBg)
         editBg:SetTexture("Interface\\BUTTONS\\WHITE8X8")
-        editBg:SetVertexColor(1.0, 1.0, 0.6, 0.3)  -- 기본 노란색
-        noteEditBox.bg = editBg
-        
+        editBg:SetVertexColor(1.0, 1.0, 0.6, 0.3)
+        editBox.bg = editBg  -- 기존 코드와의 호환성을 위해 유지
+
+        -- noteEditBox를 전역 변수에 할당
+        noteEditBox = editBox
+
+        -- noteWindow에 참조 저장 (레이아웃 업데이트를 위해)
+        noteWindow.editScrollFrame = editScrollFrame
+        noteWindow.editAreaBg = editAreaBg
+
         -- 텍스트 변경 시 자동 저장
-        noteEditBox:SetScript("OnTextChanged", function(self, userInput)
+        noteEditBox:HookScript("OnTextChanged", function(self, userInput)
             if userInput and currentNoteId then
                 addon.SaveNote(currentNoteId, self:GetText())
                 addon:UpdateNoteList()
             end
         end)
-        
-        editScrollFrame:SetScrollChild(noteEditBox)
         
         -- 저장 상태 표시
         local statusText = noteWindow:CreateFontString(nil, "OVERLAY")
@@ -418,18 +510,14 @@ function addon:UpdateWindowLayout()
         noteWindow.editFrame:SetPoint("BOTTOMRIGHT", noteWindow, "BOTTOMRIGHT", -10, 40)
     end
 
-    -- 편집 스크롤 프레임 크기 조정
-    if noteWindow.editScrollFrame then
-        noteWindow.editScrollFrame:SetPoint("TOPLEFT", noteWindow.editFrame, "TOPLEFT", 5, -5)
-        noteWindow.editScrollFrame:SetPoint("BOTTOMRIGHT", noteWindow.editFrame, "BOTTOMRIGHT", -25, 5)
+    -- 편집 영역 배경 크기 조정
+    if noteWindow.editAreaBg then
+        noteWindow.editAreaBg:SetPoint("TOPLEFT", noteWindow.editFrame, "TOPLEFT", 0, 0)
+        noteWindow.editAreaBg:SetPoint("BOTTOMRIGHT", noteWindow.editFrame, "BOTTOMRIGHT", 0, 0)
     end
 
-    -- 편집 박스 크기 조정
-    if noteEditBox then
-        local editWidth = width - 230  -- 좌측 패널(180) + 여백들
-        local editHeight = height - 80
-        noteEditBox:SetSize(editWidth, editHeight)
-    end
+    -- 편집 박스 크기는 CreateTextArea가 자동으로 관리
+    -- 필요시 여기서 추가 조정 가능
 
     -- 버튼들 위치 재조정
     if noteWindow.newButton then
