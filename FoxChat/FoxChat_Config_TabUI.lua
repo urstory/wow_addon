@@ -1734,6 +1734,162 @@ function FoxChat:ShowConfig()
 
     -- 스크롤 프레임 제거하고 직접 tab4에 배치 (광고 설정과 동일하게)
 
+    -- 구분선
+    local separator4_2 = CreateSeparator(tab4, "TOPLEFT", myJoinBackground, "BOTTOMLEFT", -10, -10)
+
+    -- 3) 주사위 자동 집계
+    local rollTrackerLabel = tab4:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    rollTrackerLabel:SetPoint("TOPLEFT", separator4_2, "BOTTOMLEFT", 10, -10)
+    rollTrackerLabel:SetText("|cFFFFD700주사위 자동 집계|r")
+
+    -- 주사위 집계 활성화 체크박스
+    local rollTrackerEnabledCheckbox = CreateFrame("CheckButton", nil, tab4)
+    rollTrackerEnabledCheckbox:SetSize(24, 24)
+    rollTrackerEnabledCheckbox:SetPoint("TOPLEFT", rollTrackerLabel, "BOTTOMLEFT", 0, -5)
+    rollTrackerEnabledCheckbox:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
+    rollTrackerEnabledCheckbox:SetPushedTexture("Interface\\Buttons\\UI-CheckBox-Down")
+    rollTrackerEnabledCheckbox:SetHighlightTexture("Interface\\Buttons\\UI-CheckBox-Highlight")
+    rollTrackerEnabledCheckbox:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
+    rollTrackerEnabledCheckbox:SetChecked(FoxChatDB and FoxChatDB.rollTrackerEnabled)
+
+    local rollTrackerEnabledLabel = tab4:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    rollTrackerEnabledLabel:SetPoint("LEFT", rollTrackerEnabledCheckbox, "RIGHT", 5, 0)
+    rollTrackerEnabledLabel:SetText("파티/공대 주사위 자동 집계 사용")
+
+    rollTrackerEnabledCheckbox:SetScript("OnClick", function(self)
+        if FoxChatDB then
+            FoxChatDB.rollTrackerEnabled = self:GetChecked()
+            if addon.RollTracker then
+                addon.RollTracker:SetEnabled(FoxChatDB.rollTrackerEnabled)
+            end
+        end
+    end)
+
+    -- 집계 시간 설정
+    local rollWindowLabel = tab4:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    rollWindowLabel:SetPoint("TOPLEFT", rollTrackerEnabledCheckbox, "BOTTOMLEFT", 0, -10)
+    rollWindowLabel:SetText("집계 시간:")
+
+    -- 드롭다운 메뉴 생성
+    local rollWindowDropdown = CreateFrame("Frame", "FoxChatRollWindowDropdown", tab4, "UIDropDownMenuTemplate")
+    rollWindowDropdown:SetPoint("LEFT", rollWindowLabel, "RIGHT", 0, 0)
+    UIDropDownMenu_SetWidth(rollWindowDropdown, 100)
+
+    -- 드롭다운 초기화 함수
+    local function RollWindowDropdown_Initialize(self, level)
+        local info = UIDropDownMenu_CreateInfo()
+        local options = {
+            {value = 5, text = "5초"},
+            {value = 10, text = "10초"},
+            {value = 15, text = "15초"},
+            {value = 20, text = "20초"},
+            {value = 30, text = "30초"},
+            {value = 60, text = "60초"}
+        }
+
+        for _, option in ipairs(options) do
+            info.text = option.text
+            info.value = option.value
+            info.func = function()
+                UIDropDownMenu_SetSelectedValue(rollWindowDropdown, option.value)
+                if FoxChatDB then
+                    FoxChatDB.rollTrackerWindowSec = option.value
+                    if addon.RollTracker then
+                        addon.RollTracker:SetWindowSec(option.value)
+                    end
+                end
+            end
+            info.checked = ((FoxChatDB and FoxChatDB.rollTrackerWindowSec or 20) == option.value)
+            UIDropDownMenu_AddButton(info, level)
+        end
+    end
+
+    UIDropDownMenu_Initialize(rollWindowDropdown, RollWindowDropdown_Initialize)
+    UIDropDownMenu_SetSelectedValue(rollWindowDropdown, (FoxChatDB and FoxChatDB.rollTrackerWindowSec) or 20)
+    UIDropDownMenu_SetText(rollWindowDropdown, tostring((FoxChatDB and FoxChatDB.rollTrackerWindowSec) or 20) .. "초")
+
+    -- 출력 등수 설정
+    local rollTopKLabel = tab4:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    rollTopKLabel:SetPoint("TOPLEFT", rollWindowLabel, "BOTTOMLEFT", 0, -15)
+    rollTopKLabel:SetText("출력 등수:")
+
+    local rollTopKEditBox = CreateFrame("EditBox", nil, tab4)
+    rollTopKEditBox:SetSize(40, 20)
+    rollTopKEditBox:SetPoint("LEFT", rollTopKLabel, "RIGHT", 10, 0)
+    rollTopKEditBox:SetAutoFocus(false)
+    rollTopKEditBox:SetMaxLetters(2)
+    rollTopKEditBox:SetNumeric(true)
+    rollTopKEditBox:SetFontObject(GameFontHighlight)
+    rollTopKEditBox:SetText(tostring((FoxChatDB and FoxChatDB.rollTrackerTopK) or 1))
+
+    local rollTopKBg = CreateFrame("Frame", nil, tab4, "BackdropTemplate")
+    rollTopKBg:SetPoint("TOPLEFT", rollTopKEditBox, -5, 5)
+    rollTopKBg:SetPoint("BOTTOMRIGHT", rollTopKEditBox, 5, -5)
+    rollTopKBg:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 8,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 }
+    })
+    rollTopKBg:SetBackdropColor(0, 0, 0, 0.8)
+
+    local rollTopKHelp = tab4:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    rollTopKHelp:SetPoint("LEFT", rollTopKBg, "RIGHT", 10, 0)
+    rollTopKHelp:SetText("(1=우승자만, 2~40=상위 N명)")
+    rollTopKHelp:SetTextColor(0.7, 0.7, 0.7)
+
+    rollTopKEditBox:SetScript("OnTextChanged", function(self)
+        local value = tonumber(self:GetText())
+        if value and FoxChatDB then
+            local clamped = math.max(1, math.min(40, value))
+            FoxChatDB.rollTrackerTopK = clamped
+            if addon.RollTracker then
+                addon.RollTracker:SetTopK(clamped)
+            end
+        end
+    end)
+
+    rollTopKEditBox:SetScript("OnEscapePressed", function(self)
+        self:ClearFocus()
+    end)
+
+    -- 솔로 모드 출력 설정
+    local rollSoloCheckbox = CreateFrame("CheckButton", nil, tab4)
+    rollSoloCheckbox:SetSize(20, 20)
+    rollSoloCheckbox:SetPoint("TOPLEFT", rollTopKLabel, "BOTTOMLEFT", 0, -10)
+    rollSoloCheckbox:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
+    rollSoloCheckbox:SetPushedTexture("Interface\\Buttons\\UI-CheckBox-Down")
+    rollSoloCheckbox:SetHighlightTexture("Interface\\Buttons\\UI-CheckBox-Highlight")
+    rollSoloCheckbox:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
+    rollSoloCheckbox:SetChecked(FoxChatDB and FoxChatDB.rollTrackerSoloUseSay ~= false)  -- 기본값 true
+
+    local rollSoloCheckLabel = tab4:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    rollSoloCheckLabel:SetPoint("LEFT", rollSoloCheckbox, "RIGHT", 3, 0)
+    rollSoloCheckLabel:SetText("솔로일 때 일반 대화(SAY)로 출력")
+
+    rollSoloCheckbox:SetScript("OnClick", function(self)
+        if FoxChatDB then
+            FoxChatDB.rollTrackerSoloUseSay = self:GetChecked()
+            if addon.RollTracker then
+                addon.RollTracker:SetSoloUseSay(FoxChatDB.rollTrackerSoloUseSay)
+            end
+        end
+    end)
+
+    -- 설명 텍스트
+    local rollTrackerHelp = tab4:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    rollTrackerHelp:SetPoint("TOPLEFT", rollSoloCheckbox, "BOTTOMLEFT", 0, -10)
+    rollTrackerHelp:SetWidth(540)
+    rollTrackerHelp:SetHeight(50)
+    rollTrackerHelp:SetJustifyH("LEFT")
+    rollTrackerHelp:SetJustifyV("TOP")
+    rollTrackerHelp:SetText(
+        "• 파티/공대에서 누군가 주사위를 굴리면 자동으로 집계를 시작합니다.\n" ..
+        "• 설정한 시간이 지나면 우승자 또는 상위 N명을 채널에 자동 출력합니다.\n" ..
+        "• 같은 사람이 여러 번 굴리면 마지막 값만 반영됩니다.\n" ..
+        "• 동점자는 모두 함께 표시됩니다."
+    )
+    rollTrackerHelp:SetTextColor(0.7, 0.7, 0.7)
 
     -- =============================================
     -- 하단 버튼들

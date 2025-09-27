@@ -9,4 +9,5 @@
 
 Localization.lua
 FoxChat.lua
+FoxChatRollTracker.lua
 FoxChat_Config_TabUI.lua
