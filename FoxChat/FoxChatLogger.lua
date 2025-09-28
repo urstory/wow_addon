@@ -347,11 +347,23 @@ end
 function CL:GetDebugInfo()
     local totalLines = 0
     local totalDays = 0
+    local largestDay = nil
+    local largestDayCount = 0
 
     for dayKey, logs in pairs(FoxChatDB.chatLogs) do
         totalDays = totalDays + 1
-        totalLines = totalLines + #logs
+        local dayCount = #logs
+        totalLines = totalLines + dayCount
+
+        if dayCount > largestDayCount then
+            largestDayCount = dayCount
+            largestDay = dayKey
+        end
     end
+
+    -- 메모리 사용량 추정
+    local memoryEstimate = totalLines * 150  -- 평균 150바이트 per message
+    local memoryMB = memoryEstimate / (1024 * 1024)
 
     return {
         enabled = FoxChatDB.chatLogConfig.enabled,
@@ -359,6 +371,29 @@ function CL:GetDebugInfo()
         totalLines = totalLines,
         currentDayKey = curDayKey,
         retentionDays = FoxChatDB.chatLogConfig.retentionDays,
+        largestDay = largestDay,
+        largestDayCount = largestDayCount,
+        memoryMB = memoryMB,
+    }
+end
+
+-- 성능 모니터링
+function CL:GetPerformanceStats()
+    local startTime = debugprofilestop()
+
+    -- 테스트 검색 수행
+    local testMessages = self:GetMessagesForDate(curDayKey) or {}
+    local searchTime = debugprofilestop() - startTime
+
+    -- 메모리 정보
+    UpdateAddOnMemoryUsage()
+    local memoryKB = GetAddOnMemoryUsage("FoxChat")
+
+    return {
+        searchTimeMs = searchTime,
+        memoryKB = memoryKB,
+        messageCount = #testMessages,
+        msPerMessage = #testMessages > 0 and (searchTime / #testMessages) or 0
     }
 end
 
@@ -427,11 +462,12 @@ SlashCmdList["FOXCHATLOG"] = function(msg)
         print("  /fclog enable - 로그 기록 시작")
         print("  /fclog disable - 로그 기록 중지")
         print("  /fclog status - 현재 상태 확인")
-        print("  /fclog test - 테스트 메시지 생성")
+        print("  /fclog test [type] - 테스트 메시지 생성 (basic/stress/session/multiday)")
         print("  /fclog clean - 오래된 로그 정리")
         print("  /fclog dates - 저장된 날짜 목록")
         print("  /fclog clear [날짜] - 특정 날짜 또는 전체 로그 삭제")
         print("  /fclog export [날짜] - 로그 내보내기 (복사용)")
+        print("  /fclog perf - 성능 통계 확인")
 
     elseif cmd == "enable" then
         CL:SetEnabled(true)
@@ -448,6 +484,11 @@ SlashCmdList["FOXCHATLOG"] = function(msg)
         print(string.format("  전체 로그: %d줄", info.totalLines))
         print(string.format("  오늘 날짜: %s", info.currentDayKey))
 
+        if info.largestDay then
+            print(string.format("  최대 로그: %s (%d줄)", info.largestDay, info.largestDayCount))
+        end
+        print(string.format("  추정 메모리: %.2f MB", info.memoryMB))
+
         local config = FoxChatDB.chatLogConfig
         print("  채널 설정:")
         print(string.format("    귓속말: %s", config.channels.WHISPER and "ON" or "OFF"))
@@ -456,26 +497,169 @@ SlashCmdList["FOXCHATLOG"] = function(msg)
         print(string.format("    길드: %s", config.channels.GUILD and "ON" or "OFF"))
 
     elseif cmd == "test" then
-        -- 테스트 메시지 생성
-        print("|cFF00FF00[FoxChat 로그]|r 테스트 메시지 생성 중...")
-        local ts = GetServerTime()
+        -- 고급 테스트 데이터 생성
+        local testType = arg and arg:lower() or "basic"
 
-        -- 귓속말 테스트
-        SaveLog(ts, CH.WHISPER_OUT, UnitName("player"), "테스트유저", "안녕하세요! 이것은 테스트 귓속말입니다.", true)
-        SaveLog(ts+1, CH.WHISPER_IN, "테스트유저", UnitName("player"), "네, 안녕하세요!", false)
+        if testType == "stress" then
+            -- 스트레스 테스트 (대량 데이터)
+            print("|cFF00FF00[FoxChat 로그]|r 스트레스 테스트 시작...")
 
-        -- 파티 테스트
-        SaveLog(ts+2, CH.PARTY, "파티원1", nil, "던전 가실 분 있나요?", false)
-        SaveLog(ts+3, CH.PARTY, UnitName("player"), nil, "저 갈게요!", false)
+            local names = {"우르사", "레오", "미라", "카이", "노바", "루나", "제우스", "아테나", "헤라", "포세이돈"}
+            local messages = {
+                "던전 가실분 있나요?",
+                "탱커 구합니다",
+                "힐러 있으신가요?",
+                "딜러 2명 구해요",
+                "퀘스트 같이 하실분",
+                "재료 팝니다",
+                "아이템 삽니다",
+                "길드원 모집중입니다",
+                "공격대 모집 중",
+                "PVP 같이 하실분",
+                "레벨업 도와주세요",
+                "포션 나눠드립니다",
+                "버프 부탁드려요",
+                "위치 공유 부탁해요",
+                "감사합니다!",
+                "수고하셨습니다",
+                "잘 부탁드립니다",
+                "다음에 또 같이해요",
+                "오늘 재밌었어요",
+                "내일 또 봐요"
+            }
 
-        -- 30분 후 세션 (세션 구분 테스트)
-        SaveLog(ts+1805, CH.PARTY, "파티원2", nil, "퀘스트 같이 하실 분?", false)
+            local channels = {CH.WHISPER_IN, CH.WHISPER_OUT, CH.PARTY, CH.RAID, CH.GUILD}
+            local baseTime = GetServerTime() - 7200  -- 2시간 전부터
 
-        print("|cFF00FF00[FoxChat 로그]|r 테스트 메시지 5개 생성 완료")
+            for i = 1, 1000 do
+                local channel = channels[math.random(#channels)]
+                local sender = names[math.random(#names)]
+                local msg = messages[math.random(#messages)]
+                local ts = baseTime + (i * 7)  -- 7초 간격
+
+                local target = nil
+                local outgoing = false
+
+                if channel == CH.WHISPER_OUT then
+                    outgoing = true
+                    target = names[math.random(#names)]
+                    sender = UnitName("player")
+                elseif channel == CH.WHISPER_IN then
+                    target = UnitName("player")
+                end
+
+                SaveLog(ts, channel, sender, target, msg, outgoing)
+            end
+
+            print("|cFF00FF00[FoxChat 로그]|r 스트레스 테스트 완료: 1000개 메시지 생성")
+
+        elseif testType == "session" then
+            -- 세션 구분 테스트
+            print("|cFF00FF00[FoxChat 로그]|r 세션 구분 테스트...")
+
+            local baseTime = GetServerTime() - 7200
+            local sessions = {
+                {time = baseTime, msgs = {"세션1 시작", "안녕하세요", "오늘 던전 가실분?"}},
+                {time = baseTime + 2000, msgs = {"세션2 시작", "방금 접속했어요", "퀘스트 도와주실분"}},  -- 33분 후
+                {time = baseTime + 4000, msgs = {"세션3 시작", "저녁 먹고 왔습니다", "공격대 구성중"}},  -- 66분 후
+            }
+
+            for _, session in ipairs(sessions) do
+                for i, msg in ipairs(session.msgs) do
+                    SaveLog(session.time + (i * 5), CH.PARTY, UnitName("player"), nil, msg, false)
+                end
+            end
+
+            print("|cFF00FF00[FoxChat 로그]|r 세션 테스트 완료: 3개 세션 생성")
+
+        elseif testType == "multiday" then
+            -- 여러 날짜 테스트
+            print("|cFF00FF00[FoxChat 로그]|r 여러 날짜 테스트...")
+
+            for day = 0, 4 do
+                local dayTime = GetServerTime() - (day * 86400)
+                local dayKey = date("%Y%m%d", dayTime)
+
+                -- SavedVariables에 직접 접근하여 날짜별 저장
+                if not FoxChatDB.chatLogs[dayKey] then
+                    FoxChatDB.chatLogs[dayKey] = {}
+                end
+
+                -- 각 날짜마다 다른 수의 메시지
+                local msgCount = 50 + (day * 20)
+                for i = 1, msgCount do
+                    local ts = dayTime - (i * 60)
+                    local msg = string.format("Day %d - Message %d", day + 1, i)
+
+                    table.insert(FoxChatDB.chatLogs[dayKey], {
+                        ts = ts,
+                        ch = CH.PARTY,
+                        s = "TestUser",
+                        m = msg,
+                        o = 0
+                    })
+                end
+
+                print(string.format("|cFF00FF00[FoxChat 로그]|r %s: %d개 메시지", dayKey, msgCount))
+            end
+
+            print("|cFF00FF00[FoxChat 로그]|r 여러 날짜 테스트 완료")
+
+        else
+            -- 기본 테스트
+            print("|cFF00FF00[FoxChat 로그]|r 기본 테스트 메시지 생성 중...")
+            local ts = GetServerTime()
+
+            -- 귓속말 테스트
+            SaveLog(ts, CH.WHISPER_OUT, UnitName("player"), "테스트유저", "안녕하세요! 이것은 테스트 귓속말입니다.", true)
+            SaveLog(ts+1, CH.WHISPER_IN, "테스트유저", UnitName("player"), "네, 안녕하세요!", false)
+
+            -- 파티 테스트
+            SaveLog(ts+2, CH.PARTY, "파티원1", nil, "던전 가실 분 있나요?", false)
+            SaveLog(ts+3, CH.PARTY, UnitName("player"), nil, "저 갈게요!", false)
+
+            -- 공격대 테스트
+            SaveLog(ts+4, CH.RAID, "공대장", nil, "모두 준비되셨나요?", false)
+
+            -- 길드 테스트
+            SaveLog(ts+5, CH.GUILD, "길드원", nil, "길드 이벤트 참여하세요!", false)
+
+            -- 30분 후 세션 (세션 구분 테스트)
+            SaveLog(ts+1805, CH.PARTY, "파티원2", nil, "퀘스트 같이 하실 분?", false)
+
+            print("|cFF00FF00[FoxChat 로그]|r 기본 테스트 메시지 7개 생성 완료")
+            print("  사용법: /fclog test [basic|stress|session|multiday]")
+        end
 
     elseif cmd == "clean" then
         CL:CleanOldLogs()
         print("|cFF00FF00[FoxChat 로그]|r 오래된 로그 정리 완료")
+
+    elseif cmd == "perf" or cmd == "performance" then
+        -- 성능 측정
+        print("|cFF00FF00[FoxChat 로그]|r 성능 측정 중...")
+
+        local stats = CL:GetPerformanceStats()
+
+        print("|cFF00FF00[FoxChat 로그]|r 성능 통계:")
+        print(string.format("  메모리 사용: %.2f KB", stats.memoryKB))
+        print(string.format("  현재 날짜 메시지: %d개", stats.messageCount))
+        print(string.format("  조회 시간: %.2f ms", stats.searchTimeMs))
+
+        if stats.messageCount > 0 then
+            print(string.format("  메시지당 시간: %.4f ms", stats.msPerMessage))
+
+            -- 성능 평가
+            if stats.searchTimeMs < 10 then
+                print("  성능 평가: |cFF00FF00최적|r")
+            elseif stats.searchTimeMs < 50 then
+                print("  성능 평가: |cFFFFFF00양호|r")
+            elseif stats.searchTimeMs < 100 then
+                print("  성능 평가: |cFFFF8000주의|r")
+            else
+                print("  성능 평가: |cFFFF0000경고|r - 로그 정리 필요")
+            end
+        end
 
     elseif cmd == "dates" then
         local dates = CL:GetAvailableDates()

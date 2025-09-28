@@ -1007,13 +1007,18 @@ local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, Creat
     searchLabel:SetText("검색:")
 
     local searchBox = CreateFrame("EditBox", nil, searchPanel, "InputBoxTemplate")
-    searchBox:SetSize(200, 20)
+    searchBox:SetSize(150, 20)
     searchBox:SetPoint("LEFT", searchLabel, "RIGHT", 10, 0)
     searchBox:SetAutoFocus(false)
 
+    -- 채널 필터 드롭다운
+    local channelFilterDropdown = CreateFrame("Frame", "FoxChatLogChannelFilter", searchPanel, "UIDropDownMenuTemplate")
+    channelFilterDropdown:SetPoint("LEFT", searchBox, "RIGHT", -10, -2)
+    UIDropDownMenu_SetWidth(channelFilterDropdown, 70)
+
     local searchButton = CreateFrame("Button", nil, searchPanel, "UIPanelButtonTemplate")
-    searchButton:SetSize(60, 22)
-    searchButton:SetPoint("LEFT", searchBox, "RIGHT", 5, 0)
+    searchButton:SetSize(50, 22)
+    searchButton:SetPoint("LEFT", channelFilterDropdown, "RIGHT", -10, 2)
     searchButton:SetText("검색")
 
     local clearButton = CreateFrame("Button", nil, searchPanel, "UIPanelButtonTemplate")
@@ -1025,49 +1030,159 @@ local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, Creat
     searchResultLabel:SetPoint("LEFT", clearButton, "RIGHT", 10, 0)
     searchResultLabel:SetText("")
 
+    -- 채널 필터 초기화
+    local selectedChannelFilter = "ALL"
+    local function InitializeChannelFilter(self)
+        local filterOptions = {
+            {text = "전체", value = "ALL"},
+            {text = "귓속말", value = "W"},
+            {text = "파티", value = "P"},
+            {text = "공대", value = "R"},
+            {text = "길드", value = "G"},
+        }
+
+        for _, option in ipairs(filterOptions) do
+            local info = UIDropDownMenu_CreateInfo()
+            info.text = option.text
+            info.value = option.value
+            info.func = function()
+                selectedChannelFilter = option.value
+                UIDropDownMenu_SetSelectedValue(channelFilterDropdown, option.value)
+                UIDropDownMenu_SetText(channelFilterDropdown, option.text)
+            end
+            UIDropDownMenu_AddButton(info)
+        end
+    end
+
+    UIDropDownMenu_Initialize(channelFilterDropdown, InitializeChannelFilter)
+    UIDropDownMenu_SetSelectedValue(channelFilterDropdown, "ALL")
+    UIDropDownMenu_SetText(channelFilterDropdown, "전체")
+
     -- 검색 기능
     local searchResults = {}
     local searchKeyword = ""
+    local searchInProgress = false
+    local searchTimer = nil
 
-    local function PerformSearch()
-        searchKeyword = searchBox:GetText()
-        if searchKeyword == "" then
-            currentMessages = Logger:GetMessagesForDate(currentDate) or {}
-        else
-            searchResults = {}
-            local allMessages = Logger:GetMessagesForDate(currentDate) or {}
+    -- 비동기 검색 함수 (프레임 드롭 방지)
+    local function SearchAsync(entries, keyword, channelFilter, onProgress, onComplete)
+        local i, n, step = 1, #entries, 300  -- 한 번에 300개씩 처리
+        local results = {}
+        local lowerKeyword = keyword ~= "" and string.lower(keyword) or nil
 
-            for i, msg in ipairs(allMessages) do
-                if msg.m and string.find(string.lower(msg.m), string.lower(searchKeyword), 1, true) then
-                    table.insert(searchResults, msg)
-                elseif msg.s and string.find(string.lower(msg.s), string.lower(searchKeyword), 1, true) then
-                    table.insert(searchResults, msg)
-                elseif msg.t and string.find(string.lower(msg.t), string.lower(searchKeyword), 1, true) then
-                    table.insert(searchResults, msg)
+        local function tick()
+            local stop = math.min(i + step - 1, n)
+            for k = i, stop do
+                local msg = entries[k]
+
+                -- 채널 필터링
+                local channelMatch = (channelFilter == "ALL") or (msg.ch == channelFilter)
+
+                -- 키워드 검색
+                local keywordMatch = true
+                if lowerKeyword then
+                    keywordMatch = (msg.m and string.find(string.lower(msg.m), lowerKeyword, 1, true)) or
+                                 (msg.s and string.find(string.lower(msg.s), lowerKeyword, 1, true)) or
+                                 (msg.t and string.find(string.lower(msg.t), lowerKeyword, 1, true))
+                end
+
+                if channelMatch and keywordMatch then
+                    table.insert(results, msg)
                 end
             end
 
-            currentMessages = searchResults
-            searchResultLabel:SetText(string.format("검색결과: %d개", #searchResults))
-        end
-
-        -- 세션 구분 재처리
-        local lastTime = 0
-        for i, msg in ipairs(currentMessages) do
-            if lastTime > 0 and (msg.ts - lastTime) > 1800 then
-                msg.sessionStart = true
-            else
-                msg.sessionStart = nil
+            if onProgress then
+                onProgress(stop / n)  -- 진행률 콜백
             end
-            lastTime = msg.ts
+
+            i = stop + 1
+            if i <= n then
+                searchTimer = C_Timer.After(0.01, tick)  -- 다음 프레임에 계속
+            else
+                searchInProgress = false
+                searchTimer = nil
+                if onComplete then
+                    onComplete(results)
+                end
+            end
         end
 
-        UpdateMessageDisplay()
+        searchInProgress = true
+        tick()
+    end
+
+    local function PerformSearch()
+        -- 이전 검색 취소
+        if searchTimer then
+            searchTimer:Cancel()
+            searchTimer = nil
+        end
+
+        searchKeyword = searchBox:GetText()
+        if searchKeyword == "" and selectedChannelFilter == "ALL" then
+            searchInProgress = false
+            currentMessages = Logger:GetMessagesForDate(currentDate) or {}
+            searchResultLabel:SetText("")
+
+            -- 세션 구분 재처리
+            local lastTime = 0
+            for i, msg in ipairs(currentMessages) do
+                if lastTime > 0 and (msg.ts - lastTime) > 1800 then
+                    msg.sessionStart = true
+                else
+                    msg.sessionStart = nil
+                end
+                lastTime = msg.ts
+            end
+
+            UpdateMessageDisplay()
+        else
+            local allMessages = Logger:GetMessagesForDate(currentDate) or {}
+            searchResultLabel:SetText("|cFFFFFF00검색중...|r")
+            searchButton:SetEnabled(false)
+
+            SearchAsync(allMessages, searchKeyword, selectedChannelFilter,
+                function(progress)
+                    -- 진행률 표시
+                    searchResultLabel:SetText(string.format("|cFFFFFF00검색중... %d%%|r", math.floor(progress * 100)))
+                end,
+                function(results)
+                    -- 검색 완료
+                    searchButton:SetEnabled(true)
+                    currentMessages = results
+                    searchResultLabel:SetText(string.format("검색결과: %d개", #results))
+
+                    -- 세션 구분 재처리
+                    local lastTime = 0
+                    for i, msg in ipairs(currentMessages) do
+                        if lastTime > 0 and (msg.ts - lastTime) > 1800 then
+                            msg.sessionStart = true
+                        else
+                            msg.sessionStart = nil
+                        end
+                        lastTime = msg.ts
+                    end
+
+                    UpdateMessageDisplay()
+                end
+            )
+        end
     end
 
     local function ClearSearch()
+        -- 검색 취소
+        if searchTimer then
+            searchTimer:Cancel()
+            searchTimer = nil
+        end
+        searchInProgress = false
+
         searchBox:SetText("")
         searchResultLabel:SetText("")
+        selectedChannelFilter = "ALL"
+        UIDropDownMenu_SetSelectedValue(channelFilterDropdown, "ALL")
+        UIDropDownMenu_SetText(channelFilterDropdown, "전체")
+
         currentMessages = Logger:GetMessagesForDate(currentDate) or {}
 
         -- 세션 구분 재처리
