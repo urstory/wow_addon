@@ -546,10 +546,136 @@ local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, Creat
         return menuButtons, contentFrames
     end
 
+    -- 설정 패널
+    local settingsPanel = CreateFrame("Frame", nil, chatlogContent, "BackdropTemplate")
+    settingsPanel:SetSize(540, 120)
+    settingsPanel:SetPoint("TOPLEFT", 0, 0)
+    settingsPanel:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        edgeSize = 1,
+        insets = {left = 1, right = 1, top = 1, bottom = 1}
+    })
+    settingsPanel:SetBackdropColor(0.1, 0.1, 0.1, 0.3)
+
+    -- 설정 타이틀
+    local settingsTitle = settingsPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    settingsTitle:SetPoint("TOPLEFT", 10, -10)
+    settingsTitle:SetText("채팅로그 설정")
+
+    -- 로그 활성화 체크박스
+    local enabledCheckbox = CreateFrame("CheckButton", nil, settingsPanel)
+    enabledCheckbox:SetPoint("TOPLEFT", settingsTitle, "BOTTOMLEFT", 0, -10)
+    enabledCheckbox:SetSize(24, 24)
+    enabledCheckbox:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
+    enabledCheckbox:SetPushedTexture("Interface\\Buttons\\UI-CheckBox-Down")
+    enabledCheckbox:SetHighlightTexture("Interface\\Buttons\\UI-CheckBox-Highlight")
+    enabledCheckbox:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
+
+    local enabledLabel = settingsPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    enabledLabel:SetPoint("LEFT", enabledCheckbox, "RIGHT", 5, 0)
+    enabledLabel:SetText("채팅로그 기록 활성화")
+
+    -- 채널 선택 (가로 배치)
+    local channelLabel = settingsPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    channelLabel:SetPoint("TOPLEFT", enabledCheckbox, "BOTTOMLEFT", 0, -10)
+    channelLabel:SetText("기록할 채널:")
+
+    local channelCheckboxes = {}
+    local channels = {
+        {key = "WHISPER", label = "귓속말"},
+        {key = "PARTY", label = "파티"},
+        {key = "RAID", label = "공대"},
+        {key = "GUILD", label = "길드"},
+    }
+
+    local xOffset = 100
+    for i, channel in ipairs(channels) do
+        local cb = CreateFrame("CheckButton", nil, settingsPanel)
+        cb:SetPoint("TOPLEFT", channelLabel, "TOPRIGHT", xOffset * (i-1) + 10, 0)
+        cb:SetSize(20, 20)
+        cb:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
+        cb:SetPushedTexture("Interface\\Buttons\\UI-CheckBox-Down")
+        cb:SetHighlightTexture("Interface\\Buttons\\UI-CheckBox-Highlight")
+        cb:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
+
+        local label = settingsPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        label:SetPoint("LEFT", cb, "RIGHT", 2, 0)
+        label:SetText(channel.label)
+
+        channelCheckboxes[channel.key] = cb
+
+        -- 이벤트 핸들러
+        cb:SetScript("OnClick", function(self)
+            FoxChatDB.chatLogConfig.channels[channel.key] = self:GetChecked()
+        end)
+    end
+
+    -- 보관 기간 설정
+    local retentionLabel = settingsPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    retentionLabel:SetPoint("TOPLEFT", channelLabel, "BOTTOMLEFT", 0, -10)
+    retentionLabel:SetText("로그 보관 기간:")
+
+    local retentionDropdown = CreateFrame("Frame", "FoxChatLogRetentionDropdown", settingsPanel, "UIDropDownMenuTemplate")
+    retentionDropdown:SetPoint("LEFT", retentionLabel, "RIGHT", -10, -2)
+    UIDropDownMenu_SetWidth(retentionDropdown, 80)
+
+    local function InitializeRetentionDropdown(self)
+        local days = {3, 7, 14, 30}
+        for _, day in ipairs(days) do
+            local info = UIDropDownMenu_CreateInfo()
+            info.text = day .. "일"
+            info.value = day
+            info.func = function()
+                UIDropDownMenu_SetSelectedValue(retentionDropdown, day)
+                UIDropDownMenu_SetText(retentionDropdown, day .. "일")
+                FoxChatDB.chatLogConfig.retentionDays = day
+            end
+            UIDropDownMenu_AddButton(info)
+        end
+    end
+
+    UIDropDownMenu_Initialize(retentionDropdown, InitializeRetentionDropdown)
+
+    -- 설정 로드
+    local function LoadSettings()
+        if FoxChatDB and FoxChatDB.chatLogConfig then
+            enabledCheckbox:SetChecked(FoxChatDB.chatLogConfig.enabled)
+
+            for key, cb in pairs(channelCheckboxes) do
+                cb:SetChecked(FoxChatDB.chatLogConfig.channels[key])
+            end
+
+            local retentionDays = FoxChatDB.chatLogConfig.retentionDays or 7
+            UIDropDownMenu_SetSelectedValue(retentionDropdown, retentionDays)
+            UIDropDownMenu_SetText(retentionDropdown, retentionDays .. "일")
+        end
+    end
+
+    -- 활성화 체크박스 이벤트
+    enabledCheckbox:SetScript("OnClick", function(self)
+        FoxChatDB.chatLogConfig.enabled = self:GetChecked()
+        if self:GetChecked() then
+            Logger:Enable()
+        else
+            Logger:Disable()
+        end
+    end)
+
+    -- 설정 초기 로드
+    C_Timer.After(0.1, LoadSettings)
+
+    -- 구분선
+    local settingsSeparator = settingsPanel:CreateTexture(nil, "BACKGROUND")
+    settingsSeparator:SetHeight(1)
+    settingsSeparator:SetColorTexture(0.3, 0.3, 0.3, 0.5)
+    settingsSeparator:SetPoint("BOTTOMLEFT", settingsPanel, "BOTTOMLEFT", 5, 5)
+    settingsSeparator:SetPoint("BOTTOMRIGHT", settingsPanel, "BOTTOMRIGHT", -5, 5)
+
     -- 상단 컨트롤 패널
     local controlPanel = CreateFrame("Frame", nil, chatlogContent)
     controlPanel:SetSize(540, 35)
-    controlPanel:SetPoint("TOPLEFT", 0, 0)
+    controlPanel:SetPoint("TOPLEFT", settingsPanel, "BOTTOMLEFT", 0, -5)
 
     -- 날짜 레이블
     local dateLabel = controlPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -580,6 +706,12 @@ local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, Creat
     datePickerButton:SetPoint("LEFT", todayButton, "RIGHT", 5, 0)
     datePickerButton:SetText("날짜선택")
 
+    -- 내보내기 버튼
+    local exportButton = CreateFrame("Button", nil, controlPanel, "UIPanelButtonTemplate")
+    exportButton:SetSize(70, 22)
+    exportButton:SetPoint("RIGHT", -85, 0)
+    exportButton:SetText("내보내기")
+
     -- 새로고침 버튼
     local refreshButton = CreateFrame("Button", nil, controlPanel, "UIPanelButtonTemplate")
     refreshButton:SetSize(70, 22)
@@ -593,9 +725,14 @@ local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, Creat
     separator:SetPoint("TOPLEFT", controlPanel, "BOTTOMLEFT", 0, -2)
     separator:SetPoint("TOPRIGHT", controlPanel, "BOTTOMRIGHT", 0, -2)
 
+    -- 검색 패널을 먼저 생성 (messageFrame이 참조하기 때문)
+    local searchPanel = CreateFrame("Frame", nil, chatlogContent)
+    searchPanel:SetSize(540, 30)
+    searchPanel:SetPoint("TOPLEFT", controlPanel, "BOTTOMLEFT", 0, -5)
+
     -- 메시지 표시 영역 (가상 스크롤)
     local messageFrame = CreateFrame("ScrollFrame", "FoxChatLogMessageFrame", chatlogContent, "FauxScrollFrameTemplate")
-    messageFrame:SetPoint("TOPLEFT", controlPanel, "BOTTOMLEFT", 0, -5)
+    messageFrame:SetPoint("TOPLEFT", searchPanel, "BOTTOMLEFT", 0, -5)
     messageFrame:SetPoint("BOTTOMRIGHT", chatlogContent, "BOTTOMRIGHT", -25, 5)
 
     -- 메시지 행 프레임들 생성
@@ -774,6 +911,183 @@ local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, Creat
         LoadMessagesForDate(today)
     end
 
+    -- 내보내기 기능
+    local function ExportCurrentDate()
+        local exportText = {}
+        table.insert(exportText, string.format("=== FoxChat 채팅로그 - %s ===\n",
+            string.format("%s-%s-%s",
+                string.sub(currentDate, 1, 4),
+                string.sub(currentDate, 5, 6),
+                string.sub(currentDate, 7, 8))))
+
+        for i, msg in ipairs(currentMessages) do
+            local timeStr = date("%H:%M:%S", msg.ts)
+            local channelName = Logger:GetChannelName(msg.ch)
+            local sender = msg.s or ""
+
+            if msg.sessionStart then
+                table.insert(exportText, string.format("\n===== 새 세션: %s =====\n", date("%H:%M", msg.ts)))
+            end
+
+            if msg.o == 1 then
+                -- 발신 귓속말
+                table.insert(exportText, string.format("[%s][%s] 나→%s: %s",
+                    timeStr, channelName, msg.t or "", msg.m or ""))
+            elseif msg.t then
+                -- 수신 귓속말
+                table.insert(exportText, string.format("[%s][%s] %s→나: %s",
+                    timeStr, channelName, sender, msg.m or ""))
+            else
+                -- 일반 메시지
+                table.insert(exportText, string.format("[%s][%s] %s: %s",
+                    timeStr, channelName, sender, msg.m or ""))
+            end
+        end
+
+        -- 내보내기 다이얼로그 생성
+        local exportDialog = CreateFrame("Frame", "FoxChatExportDialog", UIParent, "BackdropTemplate")
+        exportDialog:SetSize(500, 400)
+        exportDialog:SetPoint("CENTER")
+        exportDialog:SetBackdrop({
+            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+            edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+            edgeSize = 16,
+            insets = {left = 4, right = 4, top = 4, bottom = 4}
+        })
+        exportDialog:SetFrameStrata("DIALOG")
+        exportDialog:EnableMouse(true)
+        exportDialog:SetMovable(true)
+        exportDialog:RegisterForDrag("LeftButton")
+        exportDialog:SetScript("OnDragStart", exportDialog.StartMoving)
+        exportDialog:SetScript("OnDragStop", exportDialog.StopMovingOrSizing)
+
+        -- 타이틀
+        local title = exportDialog:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        title:SetPoint("TOP", 0, -10)
+        title:SetText("채팅로그 내보내기")
+
+        -- 설명
+        local desc = exportDialog:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        desc:SetPoint("TOP", title, "BOTTOM", 0, -5)
+        desc:SetText("Ctrl+A로 전체 선택, Ctrl+C로 복사")
+
+        -- 스크롤 프레임
+        local scrollFrame = CreateFrame("ScrollFrame", nil, exportDialog, "UIPanelScrollFrameTemplate")
+        scrollFrame:SetPoint("TOPLEFT", 10, -40)
+        scrollFrame:SetPoint("BOTTOMRIGHT", -30, 40)
+
+        -- EditBox
+        local editBox = CreateFrame("EditBox", nil, scrollFrame)
+        editBox:SetMultiLine(true)
+        editBox:SetMaxLetters(999999)
+        editBox:SetSize(450, 300)
+        editBox:SetFont("Fonts\\FRIZQT__.TTF", 11)
+        editBox:SetText(table.concat(exportText, "\n"))
+        editBox:SetScript("OnEscapePressed", function() exportDialog:Hide() end)
+
+        scrollFrame:SetScrollChild(editBox)
+
+        -- 닫기 버튼
+        local closeButton = CreateFrame("Button", nil, exportDialog, "UIPanelButtonTemplate")
+        closeButton:SetSize(80, 22)
+        closeButton:SetPoint("BOTTOM", 0, 10)
+        closeButton:SetText("닫기")
+        closeButton:SetScript("OnClick", function() exportDialog:Hide() end)
+
+        -- 포커스 설정
+        editBox:SetFocus()
+        editBox:HighlightText()
+
+        exportDialog:Show()
+    end
+
+    -- 검색 패널 UI 요소 추가
+    local searchLabel = searchPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    searchLabel:SetPoint("LEFT", 10, 0)
+    searchLabel:SetText("검색:")
+
+    local searchBox = CreateFrame("EditBox", nil, searchPanel, "InputBoxTemplate")
+    searchBox:SetSize(200, 20)
+    searchBox:SetPoint("LEFT", searchLabel, "RIGHT", 10, 0)
+    searchBox:SetAutoFocus(false)
+
+    local searchButton = CreateFrame("Button", nil, searchPanel, "UIPanelButtonTemplate")
+    searchButton:SetSize(60, 22)
+    searchButton:SetPoint("LEFT", searchBox, "RIGHT", 5, 0)
+    searchButton:SetText("검색")
+
+    local clearButton = CreateFrame("Button", nil, searchPanel, "UIPanelButtonTemplate")
+    clearButton:SetSize(60, 22)
+    clearButton:SetPoint("LEFT", searchButton, "RIGHT", 5, 0)
+    clearButton:SetText("초기화")
+
+    local searchResultLabel = searchPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    searchResultLabel:SetPoint("LEFT", clearButton, "RIGHT", 10, 0)
+    searchResultLabel:SetText("")
+
+    -- 검색 기능
+    local searchResults = {}
+    local searchKeyword = ""
+
+    local function PerformSearch()
+        searchKeyword = searchBox:GetText()
+        if searchKeyword == "" then
+            currentMessages = Logger:GetMessagesForDate(currentDate) or {}
+        else
+            searchResults = {}
+            local allMessages = Logger:GetMessagesForDate(currentDate) or {}
+
+            for i, msg in ipairs(allMessages) do
+                if msg.m and string.find(string.lower(msg.m), string.lower(searchKeyword), 1, true) then
+                    table.insert(searchResults, msg)
+                elseif msg.s and string.find(string.lower(msg.s), string.lower(searchKeyword), 1, true) then
+                    table.insert(searchResults, msg)
+                elseif msg.t and string.find(string.lower(msg.t), string.lower(searchKeyword), 1, true) then
+                    table.insert(searchResults, msg)
+                end
+            end
+
+            currentMessages = searchResults
+            searchResultLabel:SetText(string.format("검색결과: %d개", #searchResults))
+        end
+
+        -- 세션 구분 재처리
+        local lastTime = 0
+        for i, msg in ipairs(currentMessages) do
+            if lastTime > 0 and (msg.ts - lastTime) > 1800 then
+                msg.sessionStart = true
+            else
+                msg.sessionStart = nil
+            end
+            lastTime = msg.ts
+        end
+
+        UpdateMessageDisplay()
+    end
+
+    local function ClearSearch()
+        searchBox:SetText("")
+        searchResultLabel:SetText("")
+        currentMessages = Logger:GetMessagesForDate(currentDate) or {}
+
+        -- 세션 구분 재처리
+        local lastTime = 0
+        for i, msg in ipairs(currentMessages) do
+            if lastTime > 0 and (msg.ts - lastTime) > 1800 then
+                msg.sessionStart = true
+            else
+                msg.sessionStart = nil
+            end
+            lastTime = msg.ts
+        end
+
+        UpdateMessageDisplay()
+    end
+
+    searchButton:SetScript("OnClick", PerformSearch)
+    clearButton:SetScript("OnClick", ClearSearch)
+    searchBox:SetScript("OnEnterPressed", PerformSearch)
+
     -- 날짜 선택 팝업
     local datePicker = nil
     local function ShowDatePicker()
@@ -858,6 +1172,7 @@ local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, Creat
     nextButton:SetScript("OnClick", NavigateToNextDay)
     todayButton:SetScript("OnClick", NavigateToToday)
     datePickerButton:SetScript("OnClick", ShowDatePicker)
+    exportButton:SetScript("OnClick", ExportCurrentDate)
     refreshButton:SetScript("OnClick", function()
         LoadMessagesForDate(currentDate)
     end)

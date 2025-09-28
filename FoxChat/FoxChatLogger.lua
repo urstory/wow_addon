@@ -362,6 +362,17 @@ function CL:GetDebugInfo()
     }
 end
 
+-- 로거 활성화/비활성화
+function CL:Enable()
+    FoxChatDB.chatLogConfig.enabled = true
+    print("|cFF00FF00[FoxChat]|r 채팅로그 기록을 시작합니다")
+end
+
+function CL:Disable()
+    FoxChatDB.chatLogConfig.enabled = false
+    print("|cFF00FF00[FoxChat]|r 채팅로그 기록을 중지합니다")
+end
+
 -- UI용 헬퍼 메서드
 function CL:GetMessagesForDate(dayKey)
     if not FoxChatDB.chatLogs[dayKey] then
