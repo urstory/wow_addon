@@ -1853,32 +1853,9 @@ function FoxChat:ShowConfig()
         self:ClearFocus()
     end)
 
-    -- 솔로 모드 출력 설정
-    local rollSoloCheckbox = CreateFrame("CheckButton", nil, tab4)
-    rollSoloCheckbox:SetSize(20, 20)
-    rollSoloCheckbox:SetPoint("TOPLEFT", rollTopKLabel, "BOTTOMLEFT", 0, -10)
-    rollSoloCheckbox:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
-    rollSoloCheckbox:SetPushedTexture("Interface\\Buttons\\UI-CheckBox-Down")
-    rollSoloCheckbox:SetHighlightTexture("Interface\\Buttons\\UI-CheckBox-Highlight")
-    rollSoloCheckbox:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
-    rollSoloCheckbox:SetChecked(FoxChatDB and FoxChatDB.rollTrackerSoloUseSay ~= false)  -- 기본값 true
-
-    local rollSoloCheckLabel = tab4:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    rollSoloCheckLabel:SetPoint("LEFT", rollSoloCheckbox, "RIGHT", 3, 0)
-    rollSoloCheckLabel:SetText("솔로일 때 일반 대화(SAY)로 출력")
-
-    rollSoloCheckbox:SetScript("OnClick", function(self)
-        if FoxChatDB then
-            FoxChatDB.rollTrackerSoloUseSay = self:GetChecked()
-            if addon.RollTracker then
-                addon.RollTracker:SetSoloUseSay(FoxChatDB.rollTrackerSoloUseSay)
-            end
-        end
-    end)
-
     -- 설명 텍스트
     local rollTrackerHelp = tab4:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    rollTrackerHelp:SetPoint("TOPLEFT", rollSoloCheckbox, "BOTTOMLEFT", 0, -10)
+    rollTrackerHelp:SetPoint("TOPLEFT", rollTopKLabel, "BOTTOMLEFT", 0, -10)
     rollTrackerHelp:SetWidth(540)
     rollTrackerHelp:SetHeight(50)
     rollTrackerHelp:SetJustifyH("LEFT")

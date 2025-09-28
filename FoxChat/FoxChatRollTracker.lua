@@ -16,7 +16,6 @@ RT.defaults = {
     enabled = false,           -- 주사위 집계 사용 여부
     windowSec = 20,            -- 집계 시간 (15/20/30/60)
     topK = 1,                  -- 출력 등수 (1=우승자만, 2~40=상위 N명)
-    soloUseSay = true,         -- 솔로일 때 SAY 사용 (false면 내 채팅창)
 }
 
 -- 상태 변수
@@ -87,16 +86,26 @@ end
 
 -- 그룹 채널로 메시지 전송
 local function SendGroup(msg)
+    if addon.DebugMode then
+        print("[SendGroup] IsInRaid:", IsInRaid(), "IsInGroup:", IsInGroup())
+    end
+
     if IsInRaid() then
+        if addon.DebugMode then
+            print("[SendGroup] >>> RAID 채널로 전송:", msg)
+        end
         SendChatMessage(msg, "RAID")
     elseif IsInGroup() then
+        if addon.DebugMode then
+            print("[SendGroup] >>> PARTY 채널로 전송:", msg)
+        end
         SendChatMessage(msg, "PARTY")
     else
-        if FoxChatDB and FoxChatDB.rollTrackerSoloUseSay then
-            SendChatMessage(msg, "SAY")
-        else
-            DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99[FoxChat]|r " .. msg)
+        -- 솔로일 때는 로컬 채팅창에만 출력
+        if addon.DebugMode then
+            print("[SendGroup] >>> 로컬 채팅창으로 출력:", msg)
         end
+        DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99[FoxChat]|r " .. msg)
     end
 end
 
@@ -306,95 +315,169 @@ function RT:FinishSession()
 
     -- 저장된 메시지들에서 최고값 찾기
     if #self.rollMessages > 0 then
-        local playerRolls = {}  -- 각 플레이어의 마지막 주사위 값만 저장
+        local rollsByRange = {}  -- 범위별로 플레이어 주사위 값 저장
 
-        -- 각 메시지에서 이름과 값 추출
+        -- 각 메시지에서 이름과 값, 범위 추출
         for _, msg in ipairs(self.rollMessages) do
-            -- 다양한 패턴 시도
-            local name, roll
+            local name, roll, minVal, maxVal
 
-            -- 패턴 1: "우르사 주사위 굴리기를 하여 68 나왔습니다"
-            name, roll = msg:match("^(.+)%s+주사위%s+굴리기를%s+하여%s+(%d+)")
+            -- 범위 정보 포함 패턴들 시도
+            -- 패턴 1: "우르사 주사위 굴리기를 하여 68 나왔습니다. (1-100)"
+            name, roll, minVal, maxVal = msg:match("^(.+)%s+주사위%s+굴리기를%s+하여%s+(%d+).-%((%d+)%-(%d+)%)")
 
             -- 패턴 2: 더 유연한 한국어 패턴
             if not name then
-                name, roll = msg:match("^(.-)%s*주사위.-(%d+).-나왔")
+                name, roll, minVal, maxVal = msg:match("^(.-)%s*주사위.-(%d+).-나왔.-%((%d+)%-(%d+)%)")
             end
 
             -- 패턴 3: 영어 패턴
             if not name then
-                name, roll = msg:match("^(.-)%s+rolls%s+(%d+)")
+                name, roll, minVal, maxVal = msg:match("^(.-)%s+rolls%s+(%d+)%s*%((%d+)%-(%d+)%)")
             end
 
-            -- 패턴 4: 최소한 이름과 숫자만 찾기
+            -- 범위 정보가 없는 경우 (기본값으로 처리)
             if not name then
-                name = msg:match("^(%S+)")  -- 첫 단어를 이름으로
-                roll = msg:match("(%d+)")    -- 첫 숫자를 값으로
+                -- 패턴 4: 범위 없는 한국어
+                name, roll = msg:match("^(.+)%s+주사위%s+굴리기를%s+하여%s+(%d+)")
+                if name then
+                    minVal, maxVal = "1", "100"  -- 기본값
+                end
+            end
+
+            if not name then
+                -- 패턴 5: 더 유연한 패턴 (범위 없음)
+                name, roll = msg:match("^(.-)%s*주사위.-(%d+).-나왔")
+                if name then
+                    minVal, maxVal = "1", "100"  -- 기본값
+                end
+            end
+
+            if not name then
+                -- 패턴 6: 영어 (범위 없음)
+                name, roll = msg:match("^(.-)%s+rolls%s+(%d+)")
+                if name then
+                    minVal, maxVal = "1", "100"  -- 기본값
+                end
+            end
+
+            -- 패턴 7: 최소한 이름과 숫자만 찾기
+            if not name then
+                name = msg:match("^(%S+)")
+                roll = msg:match("(%d+)")
+                if name and roll then
+                    minVal, maxVal = "1", "100"  -- 기본값
+                end
             end
 
             if addon.DebugMode then
                 print("[파싱]", msg)
-                print("  -> name:", name or "nil", "roll:", roll or "nil")
+                print("  -> name:", name or "nil", "roll:", roll or "nil", "range:", (minVal or "?") .. "-" .. (maxVal or "?"))
             end
 
             if name and roll then
                 -- 이름 끝의 공백 제거
                 name = name:match("^%s*(.-)%s*$")
                 roll = tonumber(roll)
+                minVal = tonumber(minVal) or 1
+                maxVal = tonumber(maxVal) or 100
+
                 if roll then
+                    -- 범위 키 생성 (예: "1-100", "1-60")
+                    local rangeKey = minVal .. "-" .. maxVal
+
+                    -- 해당 범위 테이블이 없으면 생성
+                    if not rollsByRange[rangeKey] then
+                        rollsByRange[rangeKey] = {
+                            players = {},
+                            min = minVal,
+                            max = maxVal,
+                            count = 0
+                        }
+                    end
+
                     -- 같은 사람이 여러번 굴린 경우 마지막 값으로 덮어씀
-                    playerRolls[name] = roll
+                    rollsByRange[rangeKey].players[name] = roll
+                    rollsByRange[rangeKey].count = rollsByRange[rangeKey].count + 1
+
                     if addon.DebugMode then
-                        print("  -> 저장:", name, "=", roll)
+                        print("  -> 저장:", name, "=", roll, "범위:", rangeKey)
                     end
                 end
             end
         end
 
         if addon.DebugMode then
-            print("[플레이어별 주사위 값]")
-            for name, roll in pairs(playerRolls) do
-                print("  ", name, ":", roll)
+            print("[범위별 주사위 값]")
+            for range, data in pairs(rollsByRange) do
+                print("  범위", range, ":")
+                for name, roll in pairs(data.players) do
+                    print("    ", name, ":", roll)
+                end
             end
         end
 
-        -- 최고값 찾기
-        local maxRoll = 0
-        local winners = {}
-        for name, roll in pairs(playerRolls) do
-            if roll > maxRoll then
-                maxRoll = roll
-                winners = {name}
-            elseif roll == maxRoll then
-                table.insert(winners, name)
+        -- 각 범위별로 우승자 찾고 출력
+        local resultMessages = {}
+        local totalRolls = #self.rollMessages
+
+        for rangeKey, rangeData in pairs(rollsByRange) do
+            local maxRoll = 0
+            local winners = {}
+            local rangeRollCount = 0
+
+            -- 해당 범위에서 최고값 찾기
+            for name, roll in pairs(rangeData.players) do
+                rangeRollCount = rangeRollCount + 1
+                if roll > maxRoll then
+                    maxRoll = roll
+                    winners = {name}
+                elseif roll == maxRoll then
+                    table.insert(winners, name)
+                end
+            end
+
+            -- 결과 메시지 생성
+            if #winners > 0 then
+                local resultText
+                if #winners == 1 then
+                    if rangeKey == "1-100" then
+                        -- 기본 범위는 범위 표시 생략
+                        resultText = string.format("총 %d개의 주사위가 굴려졌고 우승은 %s(%d) 입니다.",
+                                                   rangeData.count, winners[1], maxRoll)
+                    else
+                        -- 특수 범위는 범위 표시
+                        resultText = string.format("[%s] 총 %d개의 주사위가 굴려졌고 우승은 %s(%d) 입니다.",
+                                                   rangeKey, rangeData.count, winners[1], maxRoll)
+                    end
+                else
+                    if rangeKey == "1-100" then
+                        resultText = string.format("총 %d개의 주사위가 굴려졌고 공동 우승은 %s(%d) 입니다.",
+                                                   rangeData.count, table.concat(winners, ", "), maxRoll)
+                    else
+                        resultText = string.format("[%s] 총 %d개의 주사위가 굴려졌고 공동 우승은 %s(%d) 입니다.",
+                                                   rangeKey, rangeData.count, table.concat(winners, ", "), maxRoll)
+                    end
+                end
+                table.insert(resultMessages, {range = rangeKey, text = resultText, max = rangeData.max})
             end
         end
+
+        -- 범위 크기 순으로 정렬 (큰 범위부터)
+        table.sort(resultMessages, function(a, b)
+            return a.max > b.max
+        end)
 
         -- 결과 출력
-        SendGroup("===== 주사위 결과 =====")
-
-        -- 모든 메시지 출력
-        for _, msg in ipairs(self.rollMessages) do
-            SendGroup(msg)
-        end
-
-        -- 우승자 발표
-        if #winners > 0 then
-            local winnerText
-            if #winners == 1 then
-                winnerText = string.format(">> 우승: %s (%d) <<", winners[1], maxRoll)
-            else
-                winnerText = string.format(">> 공동 우승 (%d): %s <<", maxRoll, table.concat(winners, ", "))
+        if #resultMessages > 0 then
+            for _, msg in ipairs(resultMessages) do
+                SendGroup(msg.text)
             end
-            SendGroup("===================")
-            SendGroup(winnerText)
         else
             if addon.DebugMode then
-                print("[경고] 우승자를 찾을 수 없음. playerRolls 테이블이 비어있을 수 있습니다.")
+                print("[경고] 우승자를 찾을 수 없음. 주사위 파싱 실패일 수 있습니다.")
             end
+            SendGroup("집계된 주사위가 없습니다.")
         end
-
-        SendGroup(string.format("===== 총 %d개의 주사위 =====", #self.rollMessages))
     else
         SendGroup("집계된 주사위가 없습니다.")
     end
@@ -497,12 +580,6 @@ function RT:SetTopK(n)
     end
 end
 
-function RT:SetSoloUseSay(useSay)
-    if FoxChatDB then
-        FoxChatDB.rollTrackerSoloUseSay = not not useSay
-    end
-end
-
 -- 슬래시 명령어 등록 (디버그 명령어만)
 SLASH_FOXCHATROLL1 = "/fcroll"
 SlashCmdList["FOXCHATROLL"] = function(arg)
@@ -532,25 +609,35 @@ SlashCmdList["FOXCHATROLL"] = function(arg)
         RT.sessionActive = false  -- 리셋
         RT:StartSession()
 
-        -- 테스트 메시지들 추가
+        -- 테스트 메시지들 추가 (범위별로)
         C_Timer.After(0.5, function()
             RT:AddRollMessage("우르사 주사위 굴리기를 하여 95 나왔습니다. (1-100)")
-            print("  테스트 메시지 추가: 우르사 - 95")
+            print("  테스트 메시지 추가: 우르사 - 95 (1-100)")
         end)
 
         C_Timer.After(1.0, function()
-            RT:AddRollMessage("테스트유저 주사위 굴리기를 하여 72 나왔습니다. (1-100)")
-            print("  테스트 메시지 추가: 테스트유저 - 72")
+            RT:AddRollMessage("테스트유저 주사위 굴리기를 하여 45 나왔습니다. (1-60)")
+            print("  테스트 메시지 추가: 테스트유저 - 45 (1-60)")
         end)
 
         C_Timer.After(1.5, function()
-            RT:AddRollMessage("우르사 주사위 굴리기를 하여 98 나왔습니다. (1-100)")
-            print("  테스트 메시지 추가: 우르사 - 98 (다시)")
+            RT:AddRollMessage("다른유저 주사위 굴리기를 하여 55 나왔습니다. (1-60)")
+            print("  테스트 메시지 추가: 다른유저 - 55 (1-60)")
         end)
 
         C_Timer.After(2.0, function()
-            RT:AddRollMessage("다른유저 주사위 굴리기를 하여 6 나왔습니다. (1-6)")
-            print("  테스트 메시지 추가: 다른유저 - 6 (1-6)")
+            RT:AddRollMessage("또다른유저 주사위 굴리기를 하여 72 나왔습니다. (1-100)")
+            print("  테스트 메시지 추가: 또다른유저 - 72 (1-100)")
+        end)
+
+        C_Timer.After(2.5, function()
+            RT:AddRollMessage("마지막유저 주사위 굴리기를 하여 50 나왔습니다. (1-60)")
+            print("  테스트 메시지 추가: 마지막유저 - 50 (1-60)")
+        end)
+
+        C_Timer.After(3.0, function()
+            RT:AddRollMessage("우르사 주사위 굴리기를 하여 98 나왔습니다. (1-100)")
+            print("  테스트 메시지 추가: 우르사 - 98 (1-100, 다시)")
         end)
     elseif cmd == "testmsg" then
         -- 실제 메시지 테스트
@@ -635,9 +722,12 @@ SlashCmdList["FOXCHATROLL"] = function(arg)
         print("FoxChat Roll Status:")
         print("  Enabled:", FoxChatDB and FoxChatDB.rollTrackerEnabled and "Yes" or "No")
         print("  Window:", FoxChatDB and FoxChatDB.rollTrackerWindowSec or 20, "seconds")
+        print("  Top K:", FoxChatDB and FoxChatDB.rollTrackerTopK or 1)
         print("  Session Active:", RT.sessionActive and "Yes" or "No")
         print("  Messages Stored:", #RT.rollMessages)
         print("  Debug Mode:", addon.DebugMode and "On" or "Off")
+        print("  In Raid:", IsInRaid() and "Yes" or "No")
+        print("  In Group:", IsInGroup() and "Yes" or "No")
         if #RT.rollMessages > 0 then
             print("  저장된 메시지:")
             for i, msg in ipairs(RT.rollMessages) do
