@@ -169,7 +169,7 @@ f:SetScript("OnEvent", function(self, event, msg, sender, language, channelStrin
                 CL:CleanOldLogs()
                 print("|cFF00FF00[FoxChat]|r 채팅 로그 모듈 준비 완료")
             end)
-        elseif event == "ADDON_LOADED" and ... == addonName then
+        elseif event == "ADDON_LOADED" and msg == "FoxChat" then
             -- 애드온 로드 시 설정 초기화
             CL:InitConfig()
         end
