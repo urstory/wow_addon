@@ -10,6 +10,7 @@
 Localization.lua
 FoxChat_Settings.lua
 FoxChat.lua
+FoxChatLogger.lua
 FoxChatRollTracker.lua
 FoxChat_Config_TabUI.lua
 FoxChat_Debug.lua

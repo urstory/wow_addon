@@ -31,7 +31,8 @@ local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, Creat
         {id = "trade", name = "거래", selected = true},
         {id = "greet", name = "인사", selected = false},
         {id = "reply", name = "응답", selected = false},
-        {id = "roll", name = "주사위", selected = false}
+        {id = "roll", name = "주사위", selected = false},
+        {id = "chatlog", name = "채팅로그", selected = false}
     }
 
     -- 메뉴 버튼들과 컨텐츠 프레임 저장
@@ -527,6 +528,347 @@ local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, Creat
         local value = tonumber(self:GetText()) or 1
         FoxChatDB.rollTopK = value
     end)
+
+    -- =============================================
+    -- 5) 채팅로그 컨텐츠 프레임
+    -- =============================================
+    local chatlogContent = CreateFrame("Frame", nil, rightContentPanel)
+    chatlogContent:SetAllPoints()
+    chatlogContent:Hide()
+    contentFrames["chatlog"] = chatlogContent
+
+    -- 로거 인스턴스 가져오기
+    local Logger = addon.FoxChatLogger
+    if not Logger then
+        local errorLabel = chatlogContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        errorLabel:SetPoint("CENTER", 0, 0)
+        errorLabel:SetText("채팅로그 시스템을 불러올 수 없습니다")
+        return menuButtons, contentFrames
+    end
+
+    -- 상단 컨트롤 패널
+    local controlPanel = CreateFrame("Frame", nil, chatlogContent)
+    controlPanel:SetSize(540, 35)
+    controlPanel:SetPoint("TOPLEFT", 0, 0)
+
+    -- 날짜 레이블
+    local dateLabel = controlPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    dateLabel:SetPoint("LEFT", 10, 0)
+    dateLabel:SetText(date("%Y-%m-%d"))
+
+    -- 이전 날짜 버튼
+    local prevButton = CreateFrame("Button", nil, controlPanel, "UIPanelButtonTemplate")
+    prevButton:SetSize(60, 22)
+    prevButton:SetPoint("LEFT", dateLabel, "RIGHT", 10, 0)
+    prevButton:SetText("이전")
+
+    -- 다음 날짜 버튼
+    local nextButton = CreateFrame("Button", nil, controlPanel, "UIPanelButtonTemplate")
+    nextButton:SetSize(60, 22)
+    nextButton:SetPoint("LEFT", prevButton, "RIGHT", 5, 0)
+    nextButton:SetText("다음")
+
+    -- 오늘 버튼
+    local todayButton = CreateFrame("Button", nil, controlPanel, "UIPanelButtonTemplate")
+    todayButton:SetSize(60, 22)
+    todayButton:SetPoint("LEFT", nextButton, "RIGHT", 5, 0)
+    todayButton:SetText("오늘")
+
+    -- 날짜 선택 버튼
+    local datePickerButton = CreateFrame("Button", nil, controlPanel, "UIPanelButtonTemplate")
+    datePickerButton:SetSize(80, 22)
+    datePickerButton:SetPoint("LEFT", todayButton, "RIGHT", 5, 0)
+    datePickerButton:SetText("날짜선택")
+
+    -- 새로고침 버튼
+    local refreshButton = CreateFrame("Button", nil, controlPanel, "UIPanelButtonTemplate")
+    refreshButton:SetSize(70, 22)
+    refreshButton:SetPoint("RIGHT", -10, 0)
+    refreshButton:SetText("새로고침")
+
+    -- 구분선
+    local separator = controlPanel:CreateTexture(nil, "BACKGROUND")
+    separator:SetHeight(1)
+    separator:SetColorTexture(0.3, 0.3, 0.3, 0.5)
+    separator:SetPoint("TOPLEFT", controlPanel, "BOTTOMLEFT", 0, -2)
+    separator:SetPoint("TOPRIGHT", controlPanel, "BOTTOMRIGHT", 0, -2)
+
+    -- 메시지 표시 영역 (가상 스크롤)
+    local messageFrame = CreateFrame("ScrollFrame", "FoxChatLogMessageFrame", chatlogContent, "FauxScrollFrameTemplate")
+    messageFrame:SetPoint("TOPLEFT", controlPanel, "BOTTOMLEFT", 0, -5)
+    messageFrame:SetPoint("BOTTOMRIGHT", chatlogContent, "BOTTOMRIGHT", -25, 5)
+
+    -- 메시지 행 프레임들 생성
+    local MESSAGE_HEIGHT = 14
+    local MAX_DISPLAY_LINES = 25
+    local messageRows = {}
+
+    for i = 1, MAX_DISPLAY_LINES do
+        local row = CreateFrame("Button", nil, chatlogContent)
+        row:SetHeight(MESSAGE_HEIGHT)
+        row:SetPoint("TOPLEFT", messageFrame, "TOPLEFT", 5, -(i-1) * MESSAGE_HEIGHT)
+        row:SetPoint("RIGHT", messageFrame, "RIGHT", -5, 0)
+
+        -- 배경 하이라이트
+        local highlight = row:CreateTexture(nil, "BACKGROUND")
+        highlight:SetAllPoints()
+        highlight:SetColorTexture(1, 1, 1, 0)
+        row.highlight = highlight
+
+        -- 시간 텍스트
+        local timeText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        timeText:SetPoint("LEFT", 0, 0)
+        timeText:SetTextColor(0.6, 0.6, 0.6)
+        timeText:SetWidth(50)
+        timeText:SetJustifyH("LEFT")
+        row.timeText = timeText
+
+        -- 채널 텍스트
+        local channelText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        channelText:SetPoint("LEFT", timeText, "RIGHT", 5, 0)
+        channelText:SetWidth(40)
+        channelText:SetJustifyH("LEFT")
+        row.channelText = channelText
+
+        -- 발신자 텍스트
+        local senderText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        senderText:SetPoint("LEFT", channelText, "RIGHT", 5, 0)
+        senderText:SetWidth(80)
+        senderText:SetJustifyH("LEFT")
+        row.senderText = senderText
+
+        -- 메시지 텍스트
+        local msgText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        msgText:SetPoint("LEFT", senderText, "RIGHT", 5, 0)
+        msgText:SetPoint("RIGHT", -10, 0)
+        msgText:SetJustifyH("LEFT")
+        msgText:SetWordWrap(false)
+        row.msgText = msgText
+
+        -- 호버 효과
+        row:SetScript("OnEnter", function(self)
+            self.highlight:SetColorTexture(1, 1, 1, 0.1)
+        end)
+        row:SetScript("OnLeave", function(self)
+            self.highlight:SetColorTexture(1, 1, 1, 0)
+        end)
+
+        messageRows[i] = row
+    end
+
+    -- 데이터 관련 변수들
+    local currentDate = date("%Y%m%d")
+    local currentMessages = {}
+    local scrollOffset = 0
+
+    -- 채널 색상 정의
+    local channelColors = {
+        W = {0.9, 0.5, 0.9},     -- 귓속말 (분홍)
+        P = {0.6, 0.7, 1.0},     -- 파티 (파랑)
+        R = {1.0, 0.5, 0.0},     -- 공대 (주황)
+        G = {0.25, 1.0, 0.25},   -- 길드 (초록)
+        Y = {1.0, 0.7, 0.7},     -- 외침 (밝은 빨강)
+        S = {1.0, 1.0, 1.0},     -- 일반 (흰색)
+    }
+
+    -- 메시지 업데이트 함수
+    local function UpdateMessageDisplay()
+        local numMessages = #currentMessages
+        FauxScrollFrame_Update(messageFrame, numMessages, MAX_DISPLAY_LINES, MESSAGE_HEIGHT)
+
+        scrollOffset = FauxScrollFrame_GetOffset(messageFrame)
+
+        for i = 1, MAX_DISPLAY_LINES do
+            local index = i + scrollOffset
+            local row = messageRows[i]
+
+            if index <= numMessages then
+                local msg = currentMessages[index]
+
+                -- 시간 표시
+                local timeStr = date("%H:%M", msg.ts)
+                row.timeText:SetText(timeStr)
+
+                -- 채널 표시 및 색상
+                local channelName = Logger:GetChannelName(msg.ch)
+                row.channelText:SetText(channelName)
+                local color = channelColors[msg.ch] or {1, 1, 1}
+                row.channelText:SetTextColor(color[1], color[2], color[3])
+
+                -- 발신자 표시
+                local senderStr = msg.s or ""
+                if msg.o == 1 then
+                    senderStr = "→" .. (msg.t or "")
+                elseif msg.t then
+                    senderStr = msg.s .. "→나"
+                end
+                row.senderText:SetText(senderStr)
+
+                -- 메시지 표시
+                row.msgText:SetText(msg.m or "")
+
+                -- 세션 구분선 처리
+                if msg.sessionStart then
+                    row.timeText:SetTextColor(1, 0.82, 0)
+                    row.timeText:SetText("--" .. timeStr .. "--")
+                else
+                    row.timeText:SetTextColor(0.6, 0.6, 0.6)
+                end
+
+                row:Show()
+            else
+                row:Hide()
+            end
+        end
+    end
+
+    -- 날짜별 메시지 로드 함수
+    local function LoadMessagesForDate(dateKey)
+        currentDate = dateKey
+        dateLabel:SetText(string.format("%s-%s-%s",
+            string.sub(dateKey, 1, 4),
+            string.sub(dateKey, 5, 6),
+            string.sub(dateKey, 7, 8)))
+
+        currentMessages = Logger:GetMessagesForDate(dateKey) or {}
+
+        -- 세션 구분 처리
+        local lastTime = 0
+        for i, msg in ipairs(currentMessages) do
+            if lastTime > 0 and (msg.ts - lastTime) > 1800 then
+                msg.sessionStart = true
+            end
+            lastTime = msg.ts
+        end
+
+        UpdateMessageDisplay()
+    end
+
+    -- 날짜 네비게이션 함수들
+    local function NavigateToPrevDay()
+        local year = tonumber(string.sub(currentDate, 1, 4))
+        local month = tonumber(string.sub(currentDate, 5, 6))
+        local day = tonumber(string.sub(currentDate, 7, 8))
+
+        local time = time({year = year, month = month, day = day})
+        time = time - 86400
+        local newDate = date("%Y%m%d", time)
+
+        LoadMessagesForDate(newDate)
+    end
+
+    local function NavigateToNextDay()
+        local year = tonumber(string.sub(currentDate, 1, 4))
+        local month = tonumber(string.sub(currentDate, 5, 6))
+        local day = tonumber(string.sub(currentDate, 7, 8))
+
+        local time = time({year = year, month = month, day = day})
+        time = time + 86400
+        local newDate = date("%Y%m%d", time)
+
+        LoadMessagesForDate(newDate)
+    end
+
+    local function NavigateToToday()
+        local today = date("%Y%m%d")
+        LoadMessagesForDate(today)
+    end
+
+    -- 날짜 선택 팝업
+    local datePicker = nil
+    local function ShowDatePicker()
+        if not datePicker then
+            datePicker = CreateFrame("Frame", "FoxChatDatePicker", UIParent, "BackdropTemplate")
+            datePicker:SetSize(200, 250)
+            datePicker:SetPoint("CENTER")
+            datePicker:SetBackdrop({
+                bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+                edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+                edgeSize = 16,
+                insets = {left = 4, right = 4, top = 4, bottom = 4}
+            })
+            datePicker:SetFrameStrata("DIALOG")
+            datePicker:EnableMouse(true)
+            datePicker:SetMovable(true)
+            datePicker:RegisterForDrag("LeftButton")
+            datePicker:SetScript("OnDragStart", datePicker.StartMoving)
+            datePicker:SetScript("OnDragStop", datePicker.StopMovingOrSizing)
+
+            -- 타이틀
+            local title = datePicker:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+            title:SetPoint("TOP", 0, -10)
+            title:SetText("날짜 선택")
+
+            -- 닫기 버튼
+            local closeButton = CreateFrame("Button", nil, datePicker, "UIPanelCloseButton")
+            closeButton:SetPoint("TOPRIGHT", -5, -5)
+
+            -- 스크롤 프레임
+            local scrollFrame = CreateFrame("ScrollFrame", nil, datePicker, "UIPanelScrollFrameTemplate")
+            scrollFrame:SetPoint("TOPLEFT", 10, -35)
+            scrollFrame:SetPoint("BOTTOMRIGHT", -30, 35)
+
+            -- 콘텐츠 프레임
+            local content = CreateFrame("Frame", nil, scrollFrame)
+            content:SetSize(150, 20)
+            scrollFrame:SetScrollChild(content)
+
+            -- 날짜 목록 표시
+            local function PopulateDates()
+                local dates = Logger:GetAvailableDates()
+                local yOffset = 0
+
+                for _, dateKey in ipairs(dates) do
+                    local button = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+                    button:SetSize(140, 22)
+                    button:SetPoint("TOP", 0, yOffset)
+                    button:SetText(string.format("%s-%s-%s",
+                        string.sub(dateKey, 1, 4),
+                        string.sub(dateKey, 5, 6),
+                        string.sub(dateKey, 7, 8)))
+                    button:SetScript("OnClick", function()
+                        LoadMessagesForDate(dateKey)
+                        datePicker:Hide()
+                    end)
+
+                    yOffset = yOffset - 25
+                end
+
+                content:SetHeight(math.abs(yOffset) + 20)
+            end
+
+            datePicker.PopulateDates = PopulateDates
+
+            -- 취소 버튼
+            local cancelButton = CreateFrame("Button", nil, datePicker, "UIPanelButtonTemplate")
+            cancelButton:SetSize(80, 22)
+            cancelButton:SetPoint("BOTTOM", 0, 10)
+            cancelButton:SetText("취소")
+            cancelButton:SetScript("OnClick", function()
+                datePicker:Hide()
+            end)
+        end
+
+        datePicker.PopulateDates()
+        datePicker:Show()
+    end
+
+    -- 이벤트 핸들러 연결
+    prevButton:SetScript("OnClick", NavigateToPrevDay)
+    nextButton:SetScript("OnClick", NavigateToNextDay)
+    todayButton:SetScript("OnClick", NavigateToToday)
+    datePickerButton:SetScript("OnClick", ShowDatePicker)
+    refreshButton:SetScript("OnClick", function()
+        LoadMessagesForDate(currentDate)
+    end)
+
+    -- 스크롤 이벤트
+    messageFrame:SetScript("OnVerticalScroll", function(self, offset)
+        FauxScrollFrame_OnVerticalScroll(self, offset, MESSAGE_HEIGHT, UpdateMessageDisplay)
+    end)
+
+    -- 초기 로드
+    LoadMessagesForDate(date("%Y%m%d"))
 
     return menuButtons, contentFrames
 end
