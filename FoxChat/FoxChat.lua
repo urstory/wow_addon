@@ -59,6 +59,33 @@ local defaults = {
     firstComeEnabled = false,  -- 선입 메시지 알림 활성화 상태
     firstComeMessage = "",  -- 선입 메시지
     firstComeCooldown = 5,  -- 선입 버튼 쿨다운 (초, 기본 5초)
+    -- 자동 탭 설정
+    -- 거래 자동 귓속말
+    autoTrade = true,  -- 거래 완료 시 자동 귓속말
+    -- 파티 자동 인사
+    autoPartyGreetMyJoin = false,  -- 내가 파티 참가 시 자동 인사
+    autoPartyGreetOthersJoin = false,  -- 다른 사람 파티 참가 시 자동 인사
+    partyGreetMyJoinMessages = {
+        "안녕하세요! {me}입니다. 잘 부탁드려요!",
+        "반갑습니다~ 함께 모험해요!",
+        "파티 초대 감사합니다!"
+    },
+    partyGreetOthersJoinMessages = {
+        "{target}님 환영합니다!",
+        "{target}님 반갑습니다~",
+        "어서오세요 {target}님!"
+    },
+    -- AFK/DND/전투/인던 자동응답
+    autoReplyAFK = false,  -- AFK/DND 시 자동응답
+    autoReplyCombat = false,  -- 전투 중 자동응답
+    autoReplyInstance = false,  -- 인던 중 자동응답
+    combatReplyMessage = "[자동응답] 전투 중입니다. 잠시 후 답변드리겠습니다!",
+    instanceReplyMessage = "[자동응답] 인던 중입니다. 나중에 답변드리겠습니다!",
+    autoReplyCooldown = 5,  -- 자동응답 쿨다운 (분)
+    -- 주사위 자동 집계
+    rollTrackerEnabled = false,  -- 주사위 자동 집계 사용
+    rollSessionDuration = 20,  -- 집계 시간 (초)
+    rollTopK = 0,  -- 0이면 우승자만, 양수면 상위 N명
 }
 
 -- 키워드 테이블 (빠른 검색을 위해)
@@ -1674,6 +1701,30 @@ frame:SetScript("OnEvent", function(self, event, arg1)
             FoxChatDB.adPosition = defaults.adPosition
         end
 
+        -- 자동 탭 설정 초기화
+        -- 파티 인사말 메시지 배열 초기화
+        if not FoxChatDB.partyGreetMyJoinMessages or type(FoxChatDB.partyGreetMyJoinMessages) ~= "table" then
+            FoxChatDB.partyGreetMyJoinMessages = defaults.partyGreetMyJoinMessages
+        end
+        if not FoxChatDB.partyGreetOthersJoinMessages or type(FoxChatDB.partyGreetOthersJoinMessages) ~= "table" then
+            FoxChatDB.partyGreetOthersJoinMessages = defaults.partyGreetOthersJoinMessages
+        end
+
+        -- 자동응답 설정 초기화 (개별 체크박스 마이그레이션)
+        -- 기존 autoReplyEnabled를 새로운 개별 설정으로 마이그레이션
+        if FoxChatDB.autoReplyEnabled ~= nil and FoxChatDB.autoReplyAFK == nil then
+            -- 기존 설정이 있으면 AFK에만 적용
+            FoxChatDB.autoReplyAFK = FoxChatDB.autoReplyEnabled
+            FoxChatDB.autoReplyCombat = FoxChatDB.autoReplyEnabled
+            FoxChatDB.autoReplyInstance = FoxChatDB.autoReplyEnabled
+            FoxChatDB.autoReplyEnabled = nil  -- 기존 설정 제거
+        end
+
+        -- 설정 검증
+        if addon.ValidateSettings then
+            addon:ValidateSettings()
+        end
+
         -- 키워드 파싱
         UpdateKeywords()
         UpdateIgnoreKeywords()
@@ -2191,16 +2242,19 @@ local hasGreetedMyJoin = false  -- 내가 이미 인사했는지
 
 -- 내가 파티에 참가할 때 인사
 local function SendMyJoinGreeting()
-    if not FoxChatDB or not FoxChatDB.autoPartyGreetMyJoin then return end
-    if not FoxChatDB.partyGreetMyJoinMessages or #FoxChatDB.partyGreetMyJoinMessages == 0 then return end
+    if not FoxChatDB or not FoxChatDB.autoGreetOnMyJoin then return end
+    if not FoxChatDB.myJoinMessages or FoxChatDB.myJoinMessages == "" then return end
     if hasGreetedMyJoin then return end  -- 이미 인사했으면 스킵
+
+    -- 줄바꿈으로 구분된 문자열을 테이블로 변환
+    local messages = {strsplit("\n", FoxChatDB.myJoinMessages)}
 
     -- 유효한 메시지만 필터링 (공백 제거)
     local validMessages = {}
-    for _, msg in ipairs(FoxChatDB.partyGreetMyJoinMessages) do
+    for _, msg in ipairs(messages) do
         local trimmed = string.gsub(msg, "^%s*(.-)%s*$", "%1")
         if trimmed ~= "" then
-            table.insert(validMessages, msg)
+            table.insert(validMessages, trimmed)
         end
     end
 
@@ -2228,16 +2282,19 @@ end
 
 -- 다른 사람이 파티에 참가할 때 인사
 local function SendOthersJoinGreeting(targetName)
-    if not FoxChatDB or not FoxChatDB.autoPartyGreetOthersJoin then return end
-    if not FoxChatDB.partyGreetOthersJoinMessages or #FoxChatDB.partyGreetOthersJoinMessages == 0 then return end
+    if not FoxChatDB or not FoxChatDB.autoGreetOnOthersJoin then return end
+    if not FoxChatDB.othersJoinMessages or FoxChatDB.othersJoinMessages == "" then return end
     if not targetName or targetName == "" then return end
+
+    -- 줄바꿈으로 구분된 문자열을 테이블로 변환
+    local messages = {strsplit("\n", FoxChatDB.othersJoinMessages)}
 
     -- 유효한 메시지만 필터링 (공백 제거)
     local validMessages = {}
-    for _, msg in ipairs(FoxChatDB.partyGreetOthersJoinMessages) do
+    for _, msg in ipairs(messages) do
         local trimmed = string.gsub(msg, "^%s*(.-)%s*$", "%1")
         if trimmed ~= "" then
-            table.insert(validMessages, msg)
+            table.insert(validMessages, trimmed)
         end
     end
 
@@ -2255,8 +2312,9 @@ local function SendOthersJoinGreeting(targetName)
     -- 랜덤 메시지 선택
     local message = validMessages[math.random(#validMessages)]
 
-    -- 변수 치환
-    message = string.gsub(message, "{target}", targetName)
+    -- 변수 치환 - {name}을 참가자 이름으로 치환
+    message = string.gsub(message, "{name}", targetName)
+    message = string.gsub(message, "{target}", targetName)  -- 이전 호환성
 
     -- 파티 채팅으로 전송 (약간의 딜레이)
     C_Timer.After(1.5, function()
@@ -2333,10 +2391,17 @@ autoEventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
 autoEventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 autoEventFrame:RegisterEvent("UPDATE_INVENTORY_DURABILITY")
 autoEventFrame:RegisterEvent("PARTY_INVITE_REQUEST")  -- 파티 초대 받음
+autoEventFrame:RegisterEvent("CHAT_MSG_WHISPER")  -- 귓속말 받음
+autoEventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")  -- 전투 시작
+autoEventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")  -- 전투 종료
 
 local lastGroupSize = 0
 local partyMembers = {}  -- 현재 파티 멤버 추적
 local wasInvited = false  -- 초대받았는지 여부
+
+-- AFK/DND 자동응답 시스템
+local autoReplyCooldowns = {}  -- 플레이어별 쿨다운 추적 {playerName = lastReplyTime}
+local inCombat = false  -- 전투 중 상태
 
 autoEventFrame:SetScript("OnEvent", function(self, event, ...)
     if event == "TRADE_SHOW" or event == "TRADE_REQUEST" then
@@ -2738,5 +2803,147 @@ autoEventFrame:SetScript("OnEvent", function(self, event, ...)
     elseif event == "UPDATE_INVENTORY_DURABILITY" then
         -- 내구도 변경 시 체크
         CheckDurability()
+
+    elseif event == "PLAYER_REGEN_DISABLED" then
+        -- 전투 시작
+        inCombat = true
+
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        -- 전투 종료
+        inCombat = false
+
+    elseif event == "CHAT_MSG_WHISPER" then
+        -- 귓속말 받음 - 자동응답 처리
+        local message, sender = ...
+
+        -- 파티원/공대원인지 확인
+        local isGroupMember = false
+
+        -- 발신자 이름 정규화 (서버명 제거)
+        local senderName = sender
+        if senderName then
+            senderName = senderName:match("([^-]+)") or senderName  -- 서버명 제거
+        end
+
+        if IsInGroup() or IsInRaid() then
+            -- 디버그 모드일 때 체크 과정 출력
+            local debugMode = FoxChatDB and FoxChatDB.debugAutoReply
+            if debugMode then
+                print("|cFFFFFF00[자동응답 체크]|r 발신자:", senderName, "IsInRaid:", IsInRaid(), "IsInGroup:", IsInGroup())
+            end
+
+            -- 파티/공대원 체크
+            if IsInRaid() then
+                for i = 1, GetNumGroupMembers() do
+                    local unitName = UnitName("raid"..i)
+                    if unitName then
+                        unitName = unitName:match("([^-]+)") or unitName  -- 서버명 제거
+                        if unitName == senderName then
+                            isGroupMember = true
+                            if debugMode then
+                                print("|cFFFFFF00[자동응답]|r", senderName, "는 공대원입니다.")
+                            end
+                            break
+                        end
+                    end
+                end
+            elseif IsInGroup() then
+                -- 자기 자신 체크
+                local myName = UnitName("player")
+                if myName then
+                    myName = myName:match("([^-]+)") or myName  -- 서버명 제거
+                    if myName == senderName then
+                        isGroupMember = true
+                        if debugMode then
+                            print("|cFFFFFF00[자동응답]|r", senderName, "는 나 자신입니다.")
+                        end
+                    end
+                end
+
+                -- 파티원 체크
+                if not isGroupMember then
+                    for i = 1, GetNumGroupMembers() - 1 do
+                        local unitName = UnitName("party"..i)
+                        if unitName then
+                            unitName = unitName:match("([^-]+)") or unitName  -- 서버명 제거
+                            if unitName == senderName then
+                                isGroupMember = true
+                                if debugMode then
+                                    print("|cFFFFFF00[자동응답]|r", senderName, "는 파티원입니다.")
+                                end
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+
+            if debugMode and not isGroupMember then
+                print("|cFFFFFF00[자동응답]|r", senderName, "는 그룹 멤버가 아닙니다.")
+            end
+        end
+
+        -- AFK/DND 상태이거나 전투 중이거나 인던에 있는지 확인
+        local isAFK = UnitIsAFK("player")
+        local isDND = UnitIsDND("player")
+        local isInInstance = IsInInstance()
+
+        -- 응답이 필요한지 확인 (개별 체크박스 기반)
+        local shouldRespond = false
+        local replyMessage = nil
+
+        -- AFK/DND 체크 (항상 활성화)
+        if (isAFK or isDND) then
+            shouldRespond = true
+            if isAFK then
+                replyMessage = "[자동응답] 현재 자리를 비웠습니다. 돌아오면 답변드리겠습니다!"
+            else
+                replyMessage = "[자동응답] 현재 방해금지 모드입니다. 나중에 답변드리겠습니다!"
+            end
+        end
+
+        -- 전투 중 체크 (파티원/공대원 제외)
+        if not shouldRespond and inCombat and FoxChatDB and FoxChatDB.autoReplyCombat then
+            -- 같은 파티/공대원이면 자동응답 하지 않음
+            if not isGroupMember then
+                shouldRespond = true
+                replyMessage = (FoxChatDB and FoxChatDB.combatReplyMessage) or "[자동응답] 전투 중입니다. 잠시 후 답변드리겠습니다!"
+            end
+        end
+
+        -- 인던 중 체크 (파티원/공대원 제외)
+        if not shouldRespond and isInInstance and FoxChatDB and FoxChatDB.autoReplyInstance then
+            -- 같은 파티/공대원이면 자동응답 하지 않음
+            if not isGroupMember then
+                shouldRespond = true
+                replyMessage = (FoxChatDB and FoxChatDB.instanceReplyMessage) or "[자동응답] 인던 중입니다. 나중에 답변드리겠습니다!"
+            end
+        end
+
+        -- 응답이 필요 없으면 종료
+        if not shouldRespond or not replyMessage then
+            return
+        end
+
+        -- 쿨다운 확인
+        local currentTime = GetTime()
+        local cooldownMinutes = (FoxChatDB and FoxChatDB.autoReplyCooldown) or 5
+        local cooldownSeconds = cooldownMinutes * 60
+
+        if autoReplyCooldowns[sender] then
+            if currentTime - autoReplyCooldowns[sender] < cooldownSeconds then
+                -- 아직 쿨다운 중
+                return
+            end
+        end
+
+        -- 메시지 전송
+        SendChatMessage(replyMessage, "WHISPER", nil, sender)
+        autoReplyCooldowns[sender] = currentTime
+
+        -- 디버그 메시지
+        if debugMode then
+            print("|cFFFF7D0A[FoxChat]|r 자동응답 발송: " .. sender .. " - " .. replyMessage)
+        end
     end
 end)

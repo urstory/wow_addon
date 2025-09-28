@@ -14,7 +14,7 @@ addon.DebugMode = addon.DebugMode or false
 -- 설정 기본값
 RT.defaults = {
     enabled = false,           -- 주사위 집계 사용 여부
-    windowSec = 20,            -- 집계 시간 (15/20/30/60)
+    windowSec = 10,            -- 집계 시간 (10/15/20/30/45/60) 기본값 10초
     topK = 1,                  -- 출력 등수 (1=우승자만, 2~40=상위 N명)
 }
 
@@ -86,26 +86,39 @@ end
 
 -- 그룹 채널로 메시지 전송
 local function SendGroup(msg)
+    -- rollOutputChannel 설정 확인 (기본값: SELF)
+    local outputChannel = (FoxChatDB and FoxChatDB.rollOutputChannel) or "SELF"
+
     if addon.DebugMode then
-        print("[SendGroup] IsInRaid:", IsInRaid(), "IsInGroup:", IsInGroup())
+        print("[SendGroup] OutputChannel:", outputChannel, "IsInRaid:", IsInRaid(), "IsInGroup:", IsInGroup())
     end
 
-    if IsInRaid() then
+    if outputChannel == "SELF" then
+        -- 나에게만 출력 (시스템 메시지로)
         if addon.DebugMode then
-            print("[SendGroup] >>> RAID 채널로 전송:", msg)
+            print("[SendGroup] >>> 나에게만 출력:", msg)
         end
-        SendChatMessage(msg, "RAID")
-    elseif IsInGroup() then
-        if addon.DebugMode then
-            print("[SendGroup] >>> PARTY 채널로 전송:", msg)
-        end
-        SendChatMessage(msg, "PARTY")
+        -- 노란색 시스템 메시지로 출력
+        print("|cFFFFFF00[주사위 집계]|r " .. msg)
     else
-        -- 솔로일 때는 로컬 채팅창에만 출력
-        if addon.DebugMode then
-            print("[SendGroup] >>> 로컬 채팅창으로 출력:", msg)
+        -- 파티/공대 출력 (GROUP)
+        if IsInRaid() then
+            if addon.DebugMode then
+                print("[SendGroup] >>> RAID 채널로 전송:", msg)
+            end
+            SendChatMessage(msg, "RAID")
+        elseif IsInGroup() then
+            if addon.DebugMode then
+                print("[SendGroup] >>> PARTY 채널로 전송:", msg)
+            end
+            SendChatMessage(msg, "PARTY")
+        else
+            -- 솔로일 때는 로컬 채팅창에만 출력
+            if addon.DebugMode then
+                print("[SendGroup] >>> 로컬 채팅창으로 출력 (솔로):", msg)
+            end
+            DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99[FoxChat 주사위]|r " .. msg)
         end
-        DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99[FoxChat]|r " .. msg)
     end
 end
 

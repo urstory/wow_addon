@@ -27,6 +27,8 @@ A World of Warcraft Classic addon for chat message filtering and highlighting wi
 - **Auto Features**:
   - Trade completion messages with automatic whisper
   - Party auto-greeting with random message selection
+  - Smart auto-reply system with cooldown management
+  - Dice roll tracking and automatic result announcement
   - Auto repair alerts
 - **Localization**: Full support for English and Korean
 
@@ -47,6 +49,7 @@ A World of Warcraft Classic addon for chat message filtering and highlighting wi
 - `/fc add <keyword>` - Add a keyword
 - `/fc remove <keyword>` - Remove a keyword
 - `/fc list` - Show current keywords
+- `/fcdbg autoreply` - Toggle auto-reply debug mode
 
 ### Minimap Button
 
@@ -78,15 +81,33 @@ The new tab-based interface includes four sections:
 - Select cooldown duration (15/30/45/60 seconds)
 - Choose target channel (automatic channel list)
 - Start/stop advertising
-- Fixed bug with party participant count display format
 
-#### Tab 4: Auto Features
-- **Trade Completion Messages**: Automatically sends whisper with trade details after successful trades
-- **Party Auto-Greeting**:
-  - Sends random greeting when you join a party
-  - Sends random greeting when others join your party
-  - Customizable greeting messages for both scenarios
-- **Auto Repair Alert**: Notifies when equipment durability is low
+#### Tab 4: Auto Features (Left Menu Navigation)
+Enhanced UI with left-side menu and right-side content area:
+
+**Trade (거래)**
+- Automatically sends trade details via whisper after successful trades
+
+**Greetings (인사)**
+- **When I Join**: Sends random greeting when you join a party
+  - Supports {me} variable for your character name
+  - Multiple messages (one per line, randomly selected)
+- **When Others Join**: Sends greeting when others join your party
+  - Supports {name} variable for the joiner's name
+  - Multiple messages with random selection
+
+**Reply (응답)**
+- **Combat Auto-Reply**: Responds to whispers during combat (excludes party/raid members)
+- **Instance Auto-Reply**: Responds to whispers while in dungeons (excludes party/raid members)
+- **AFK/DND**: Always active automatic responses
+- **Cooldown System**: Configurable cooldown per sender (default: 5 minutes)
+- Custom messages for each situation
+
+**Dice (주사위)**
+- Automatic dice roll tracking for party/raid
+- Configurable collection time: 10/15/20/30/45/60 seconds (default: 10)
+- Output options: Party/Raid or Self only (default: Self)
+- Winner display: Top N players (default: 1 winner only)
 
 ## Configuration Options
 
@@ -113,6 +134,13 @@ The new tab-based interface includes four sections:
 - **Shift+Drag**: Move the advertisement button
 - **Smart Cooldown**: Resets when stopping ads
 
+### Auto-Reply System
+- **Smart Group Detection**: Never auto-replies to party/raid members
+- **Multiple Trigger Conditions**: Combat, Instance, AFK/DND
+- **Per-Sender Cooldown**: Prevents spam to the same person
+- **Customizable Messages**: Different messages for each situation
+- **Debug Mode**: `/fcdbg autoreply` to see detection process
+
 ---
 
 # FoxChat (한국어)
@@ -133,6 +161,8 @@ The new tab-based interface includes four sections:
 - **자동 기능**:
   - 거래 완료 시 자동 귓속말 메시지
   - 파티 자동 인사 (랜덤 메시지)
+  - 스마트 자동응답 시스템 (쿨다운 관리)
+  - 주사위 자동 집계 및 결과 발표
   - 자동 수리 알림
 - **현지화**: 영어 및 한국어 완벽 지원
 
@@ -153,6 +183,7 @@ The new tab-based interface includes four sections:
 - `/fc add <키워드>` - 키워드 추가
 - `/fc remove <키워드>` - 키워드 제거
 - `/fc list` - 현재 키워드 목록 표시
+- `/fcdbg autoreply` - 자동응답 디버그 모드 토글
 
 ### 미니맵 버튼
 
@@ -184,15 +215,33 @@ The new tab-based interface includes four sections:
 - 쿨타임 선택 (15/30/45/60초)
 - 대상 채널 선택 (자동 채널 목록)
 - 광고 시작/중지
-- 파티참여자수/파티원수 표시 버그 수정
 
-#### 탭 4: 자동 기능
-- **거래 완료 메시지**: 거래 성공 후 자동으로 거래 내역 귓속말 전송
-- **파티 자동 인사**:
-  - 파티 참가 시 랜덤 인사 메시지 전송
-  - 다른 사람이 파티 참가 시 랜덤 인사 메시지 전송
-  - 각각 사용자 정의 가능한 인사 메시지
-- **자동 수리 알림**: 장비 내구도가 낮을 때 알림
+#### 탭 4: 자동 기능 (좌측 메뉴 네비게이션)
+좌측 메뉴와 우측 컨텐츠 영역으로 개선된 UI:
+
+**거래 (Trade)**
+- 거래 완료 시 자동으로 거래 내역을 귓속말로 전송
+
+**인사 (Greetings)**
+- **내가 참가할 때**: 파티 참가 시 랜덤 인사 메시지 전송
+  - {me} 변수 지원 (내 캐릭터 이름)
+  - 여러 메시지 설정 가능 (한 줄에 하나씩, 랜덤 선택)
+- **다른 사람이 참가할 때**: 다른 사람이 파티 참가 시 인사
+  - {name} 변수 지원 (참가자 이름)
+  - 여러 메시지 랜덤 선택
+
+**응답 (Reply)**
+- **전투 중 자동응답**: 전투 중 귓속말 자동응답 (파티/공대원 제외)
+- **인던 중 자동응답**: 던전 진행 중 자동응답 (파티/공대원 제외)
+- **AFK/DND**: 항상 활성화되는 자동응답
+- **쿨다운 시스템**: 발신자별 재응답 대기시간 설정 (기본: 5분)
+- 각 상황별 사용자 정의 메시지 설정
+
+**주사위 (Dice)**
+- 파티/공대 주사위 자동 집계
+- 집계 시간 설정: 10/15/20/30/45/60초 (기본: 10초)
+- 출력 옵션: 파티/공대 또는 나에게만 (기본: 나에게만)
+- 우승자 표시: 상위 N명 (기본: 1명만)
 
 ## 설정 옵션
 
@@ -219,6 +268,13 @@ The new tab-based interface includes four sections:
 - **Shift+드래그**: 광고 버튼 이동
 - **스마트 쿨타임**: 광고 중지 시 초기화
 
+### 자동응답 시스템
+- **스마트 그룹 감지**: 파티/공대원에게는 자동응답하지 않음
+- **다중 트리거 조건**: 전투, 인스턴스, AFK/DND
+- **발신자별 쿨다운**: 같은 사람에게 스팸 방지
+- **사용자 정의 메시지**: 각 상황별 다른 메시지
+- **디버그 모드**: `/fcdbg autoreply`로 감지 과정 확인
+
 ## 특징
 
 - 플레이어 이름은 필터링하지 않고 메시지 내용만 필터링
@@ -233,16 +289,18 @@ The new tab-based interface includes four sections:
 - 미니맵 버튼이 보이지 않는 경우: 설정창에서 "미니맵 버튼 표시" 확인
 - 키워드가 작동하지 않는 경우: 키워드가 쉼표로 올바르게 구분되었는지 확인
 - 광고 버튼이 보이지 않는 경우: 광고 메시지를 먼저 입력하고 시작 버튼 클릭
+- 자동응답 테스트: `/fcdbg autoreply`로 디버그 모드 활성화
 
 ## 버전
 
-- 현재 버전: 2.2
+- 현재 버전: 3.0
 - WoW 클래식 호환
 - 최신 업데이트:
-  - 멀티라인 텍스트 입력을 위한 TextArea 구현
-  - 스크롤바가 있는 편집 영역으로 개선
-  - 커서 위치 및 자동 스크롤 문제 해결
-  - 모든 멀티라인 입력 필드에 일관된 UI 적용
+  - 자동 탭 UI를 좌측 메뉴 방식으로 완전 개편
+  - 스마트 자동응답 시스템 추가 (파티/공대원 제외)
+  - 주사위 자동 집계 기능 구현
+  - 파티 자동인사 메시지에 변수 지원 추가
+  - 각 기능별 상세 설정 UI 개선
 
 ## 개발자
 

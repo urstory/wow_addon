@@ -1,6 +1,536 @@
 local addonName, addon = ...
 local L = addon.L
 
+-- FoxChat 자동 탭 새로운 UI 구현
+-- 좌측 메뉴 + 우측 컨텐츠 방식
+
+local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, CreateSeparator)
+    -- =============================================
+    -- Phase 1: UI 프레임워크 구축
+    -- =============================================
+
+    -- 좌측 메뉴 패널 생성
+    local leftMenuPanel = CreateFrame("Frame", nil, tab4, "BackdropTemplate")
+    leftMenuPanel:SetSize(100, 450)
+    leftMenuPanel:SetPoint("TOPLEFT", tab4, "TOPLEFT", 5, -5)
+    leftMenuPanel:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        edgeSize = 1,
+        insets = {left = 1, right = 1, top = 1, bottom = 1}
+    })
+    leftMenuPanel:SetBackdropColor(0.1, 0.1, 0.1, 0.3)
+
+    -- 우측 컨텐츠 패널 생성
+    local rightContentPanel = CreateFrame("Frame", nil, tab4)
+    rightContentPanel:SetSize(540, 430)
+    rightContentPanel:SetPoint("TOPLEFT", leftMenuPanel, "TOPRIGHT", 5, 0)
+
+    -- 메뉴 데이터 구조
+    local menuItems = {
+        {id = "trade", name = "거래", selected = true},
+        {id = "greet", name = "인사", selected = false},
+        {id = "reply", name = "응답", selected = false},
+        {id = "roll", name = "주사위", selected = false}
+    }
+
+    -- 메뉴 버튼들과 컨텐츠 프레임 저장
+    local menuButtons = {}
+    local contentFrames = {}
+    local currentMenuId = "trade"
+
+    -- 메뉴 버튼 생성 함수
+    local function CreateMenuButton(parent, menuItem, index)
+        local button = CreateFrame("Button", nil, parent)
+        button:SetSize(96, 30)
+        button:SetPoint("TOPLEFT", parent, "TOPLEFT", 2, -10 - (index-1) * 35)
+
+        -- 버튼 텍스트
+        local text = button:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        text:SetPoint("CENTER", 0, 0)
+        text:SetText(menuItem.name)
+        button.text = text
+
+        -- 하이라이트 텍스처
+        local highlight = button:CreateTexture(nil, "BACKGROUND")
+        highlight:SetAllPoints()
+        highlight:SetColorTexture(1, 1, 1, 0.1)
+        highlight:Hide()
+        button.highlight = highlight
+
+        -- 선택 텍스처
+        local selected = button:CreateTexture(nil, "BACKGROUND")
+        selected:SetAllPoints()
+        selected:SetColorTexture(0.8, 0.6, 0.2, 0.3)
+        selected:Hide()
+        button.selected = selected
+
+        -- 호버 효과
+        button:SetScript("OnEnter", function(self)
+            if currentMenuId ~= menuItem.id then
+                self.highlight:Show()
+            end
+        end)
+
+        button:SetScript("OnLeave", function(self)
+            self.highlight:Hide()
+        end)
+
+        -- 클릭 이벤트
+        button:SetScript("OnClick", function(self)
+            -- 모든 버튼 초기화
+            for id, btn in pairs(menuButtons) do
+                btn.selected:Hide()
+                btn.text:SetTextColor(1, 1, 1, 1)
+            end
+
+            -- 현재 버튼 선택
+            self.selected:Show()
+            self.text:SetTextColor(1, 0.82, 0, 1)
+
+            -- 컨텐츠 전환
+            for id, frame in pairs(contentFrames) do
+                frame:Hide()
+            end
+            if contentFrames[menuItem.id] then
+                contentFrames[menuItem.id]:Show()
+            end
+
+            currentMenuId = menuItem.id
+        end)
+
+        return button
+    end
+
+    -- 메뉴 버튼들 생성
+    for i, menuItem in ipairs(menuItems) do
+        local button = CreateMenuButton(leftMenuPanel, menuItem, i)
+        menuButtons[menuItem.id] = button
+
+        if menuItem.selected then
+            button.selected:Show()
+            button.text:SetTextColor(1, 0.82, 0, 1)
+        end
+    end
+
+    -- =============================================
+    -- Phase 3: 각 메뉴별 컨텐츠 프레임 생성
+    -- =============================================
+
+    -- 1) 거래 컨텐츠 프레임
+    local tradeContent = CreateFrame("Frame", nil, rightContentPanel)
+    tradeContent:SetAllPoints()
+    tradeContent:Show() -- 기본으로 표시
+    contentFrames["trade"] = tradeContent
+
+    -- 거래 자동 귓속말 체크박스
+    local tradeAutoCheckbox = CreateFrame("CheckButton", nil, tradeContent)
+    tradeAutoCheckbox:SetPoint("TOPLEFT", 20, -20)
+    tradeAutoCheckbox:SetSize(24, 24)
+    tradeAutoCheckbox:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
+    tradeAutoCheckbox:SetPushedTexture("Interface\\Buttons\\UI-CheckBox-Down")
+    tradeAutoCheckbox:SetHighlightTexture("Interface\\Buttons\\UI-CheckBox-Highlight")
+    tradeAutoCheckbox:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
+
+    local tradeAutoCheckLabel = tradeContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    tradeAutoCheckLabel:SetPoint("LEFT", tradeAutoCheckbox, "RIGHT", 5, 0)
+    tradeAutoCheckLabel:SetText("거래 완료 시 자동으로 거래 내역을 귓속말로 전송")
+
+    -- 거래 도움말
+    local tradeHelp = tradeContent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    tradeHelp:SetPoint("TOPLEFT", tradeAutoCheckbox, "BOTTOMLEFT", 5, -10)
+    tradeHelp:SetText("거래가 완료되면 거래 상대에게 자동으로 거래 내역을 귓속말로 보냅니다.")
+    tradeHelp:SetTextColor(0.7, 0.7, 0.7)
+    tradeHelp:SetWordWrap(true)
+    tradeHelp:SetWidth(400)
+
+    -- 거래 설정값 로드
+    if FoxChatDB and FoxChatDB.tradeAutoWhisper then
+        tradeAutoCheckbox:SetChecked(true)
+    end
+
+    tradeAutoCheckbox:SetScript("OnClick", function(self)
+        FoxChatDB = FoxChatDB or {}
+        FoxChatDB.tradeAutoWhisper = self:GetChecked()
+    end)
+
+    -- 2) 인사 컨텐츠 프레임
+    local greetContent = CreateFrame("Frame", nil, rightContentPanel)
+    greetContent:SetAllPoints()
+    greetContent:Hide()
+    contentFrames["greet"] = greetContent
+
+    -- 파티 자동인사 레이블
+    local partyGreetLabel = greetContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    partyGreetLabel:SetPoint("TOPLEFT", 20, -20)
+    partyGreetLabel:SetText("파티 자동인사")
+
+    -- 내가 참가할 때
+    local myJoinCheckbox = CreateFrame("CheckButton", nil, greetContent)
+    myJoinCheckbox:SetPoint("TOPLEFT", partyGreetLabel, "BOTTOMLEFT", 0, -15)
+    myJoinCheckbox:SetSize(24, 24)
+    myJoinCheckbox:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
+    myJoinCheckbox:SetPushedTexture("Interface\\Buttons\\UI-CheckBox-Down")
+    myJoinCheckbox:SetHighlightTexture("Interface\\Buttons\\UI-CheckBox-Highlight")
+    myJoinCheckbox:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
+
+    local myJoinCheckLabel = greetContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    myJoinCheckLabel:SetPoint("LEFT", myJoinCheckbox, "RIGHT", 5, 0)
+    myJoinCheckLabel:SetText("내가 파티에 참가할 때 인사")
+
+    -- 내가 참가 메시지 입력창
+    local myJoinListLabel = greetContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    myJoinListLabel:SetPoint("TOPLEFT", myJoinCheckbox, "BOTTOMLEFT", 25, -10)
+    myJoinListLabel:SetText("인사말 목록 (한 줄에 하나씩, 랜덤 선택, {me}는 내 이름으로 치환):")
+
+    local myJoinBackground, myJoinEditBox = CreateTextArea(greetContent, 400, 80, 0)
+    myJoinBackground:SetPoint("TOPLEFT", myJoinListLabel, "BOTTOMLEFT", 0, -5)
+
+    -- 다른 사람이 참가할 때
+    local othersJoinCheckbox = CreateFrame("CheckButton", nil, greetContent)
+    othersJoinCheckbox:SetPoint("TOPLEFT", myJoinBackground, "BOTTOMLEFT", -25, -20)
+    othersJoinCheckbox:SetSize(24, 24)
+    othersJoinCheckbox:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
+    othersJoinCheckbox:SetPushedTexture("Interface\\Buttons\\UI-CheckBox-Down")
+    othersJoinCheckbox:SetHighlightTexture("Interface\\Buttons\\UI-CheckBox-Highlight")
+    othersJoinCheckbox:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
+
+    local othersJoinCheckLabel = greetContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    othersJoinCheckLabel:SetPoint("LEFT", othersJoinCheckbox, "RIGHT", 5, 0)
+    othersJoinCheckLabel:SetText("다른 사람이 파티에 참가할 때 인사")
+
+    -- 다른 사람 참가 메시지 입력창
+    local othersJoinListLabel = greetContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    othersJoinListLabel:SetPoint("TOPLEFT", othersJoinCheckbox, "BOTTOMLEFT", 25, -10)
+    othersJoinListLabel:SetText("인사말 목록 (한 줄에 하나씩, {name}은 참가자 이름으로 치환):")
+
+    local othersJoinBackground, othersJoinEditBox = CreateTextArea(greetContent, 400, 80, 0)
+    othersJoinBackground:SetPoint("TOPLEFT", othersJoinListLabel, "BOTTOMLEFT", 0, -5)
+
+    -- 인사 설정값 로드
+    if FoxChatDB then
+        myJoinCheckbox:SetChecked(FoxChatDB.autoGreetOnMyJoin)
+        othersJoinCheckbox:SetChecked(FoxChatDB.autoGreetOnOthersJoin)
+        myJoinEditBox:SetText(FoxChatDB.myJoinMessages or "안녕하세요!\n반갑습니다!")
+        othersJoinEditBox:SetText(FoxChatDB.othersJoinMessages or "{name}님 환영합니다!\n{name}님 어서오세요!")
+    end
+
+    myJoinCheckbox:SetScript("OnClick", function(self)
+        FoxChatDB = FoxChatDB or {}
+        FoxChatDB.autoGreetOnMyJoin = self:GetChecked()
+    end)
+
+    othersJoinCheckbox:SetScript("OnClick", function(self)
+        FoxChatDB = FoxChatDB or {}
+        FoxChatDB.autoGreetOnOthersJoin = self:GetChecked()
+    end)
+
+    myJoinEditBox:SetScript("OnTextChanged", function(self)
+        FoxChatDB = FoxChatDB or {}
+        FoxChatDB.myJoinMessages = self:GetText()
+    end)
+
+    othersJoinEditBox:SetScript("OnTextChanged", function(self)
+        FoxChatDB = FoxChatDB or {}
+        FoxChatDB.othersJoinMessages = self:GetText()
+    end)
+
+    -- 3) 응답 컨텐츠 프레임
+    local replyContent = CreateFrame("Frame", nil, rightContentPanel)
+    replyContent:SetAllPoints()
+    replyContent:Hide()
+    contentFrames["reply"] = replyContent
+
+    -- AFK/DND 자동응답 레이블
+    local autoReplyLabel = replyContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    autoReplyLabel:SetPoint("TOPLEFT", 20, -20)
+    autoReplyLabel:SetText("전투/인던 자동응답")
+
+    -- 전투 중 자동응답
+    local combatReplyCheckbox = CreateFrame("CheckButton", nil, replyContent)
+    combatReplyCheckbox:SetPoint("TOPLEFT", autoReplyLabel, "BOTTOMLEFT", 0, -15)
+    combatReplyCheckbox:SetSize(24, 24)
+    combatReplyCheckbox:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
+    combatReplyCheckbox:SetPushedTexture("Interface\\Buttons\\UI-CheckBox-Down")
+    combatReplyCheckbox:SetHighlightTexture("Interface\\Buttons\\UI-CheckBox-Highlight")
+    combatReplyCheckbox:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
+
+    local combatReplyLabel = replyContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    combatReplyLabel:SetPoint("LEFT", combatReplyCheckbox, "RIGHT", 5, 0)
+    combatReplyLabel:SetText("전투 중 자동응답 사용 (파티/공대원 제외)")
+
+    -- 전투 메시지 입력
+    local combatMsgLabel = replyContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    combatMsgLabel:SetPoint("TOPLEFT", combatReplyCheckbox, "BOTTOMLEFT", 25, -10)
+    combatMsgLabel:SetText("전투 메시지:")
+
+    local combatMsgBg = CreateFrame("Frame", nil, replyContent, "BackdropTemplate")
+    combatMsgBg:SetSize(350, 25)
+    combatMsgBg:SetPoint("TOPLEFT", combatMsgLabel, "BOTTOMLEFT", 0, -5)
+    combatMsgBg:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 8,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 }
+    })
+    combatMsgBg:SetBackdropColor(0, 0, 0, 0.5)
+
+    local combatMsgEditBox = CreateFrame("EditBox", nil, combatMsgBg)
+    combatMsgEditBox:SetPoint("TOPLEFT", 5, -5)
+    combatMsgEditBox:SetPoint("BOTTOMRIGHT", -5, 5)
+    combatMsgEditBox:SetMultiLine(false)
+    combatMsgEditBox:SetAutoFocus(false)
+    combatMsgEditBox:SetFontObject("GameFontWhite")
+    combatMsgEditBox:SetText(FoxChatDB and FoxChatDB.combatReplyMessage or "[자동응답] 전투 중입니다. 잠시 후 답변드리겠습니다.")
+
+    -- 인던 중 자동응답
+    local instanceReplyCheckbox = CreateFrame("CheckButton", nil, replyContent)
+    instanceReplyCheckbox:SetPoint("TOPLEFT", combatMsgBg, "BOTTOMLEFT", -25, -15)
+    instanceReplyCheckbox:SetSize(24, 24)
+    instanceReplyCheckbox:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
+    instanceReplyCheckbox:SetPushedTexture("Interface\\Buttons\\UI-CheckBox-Down")
+    instanceReplyCheckbox:SetHighlightTexture("Interface\\Buttons\\UI-CheckBox-Highlight")
+    instanceReplyCheckbox:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
+
+    local instanceReplyLabel = replyContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    instanceReplyLabel:SetPoint("LEFT", instanceReplyCheckbox, "RIGHT", 5, 0)
+    instanceReplyLabel:SetText("인던 중 자동응답 사용 (파티/공대원 제외)")
+
+    -- 인던 메시지 입력
+    local instanceMsgLabel = replyContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    instanceMsgLabel:SetPoint("TOPLEFT", instanceReplyCheckbox, "BOTTOMLEFT", 25, -10)
+    instanceMsgLabel:SetText("인던 메시지:")
+
+    local instanceMsgBg = CreateFrame("Frame", nil, replyContent, "BackdropTemplate")
+    instanceMsgBg:SetSize(350, 25)
+    instanceMsgBg:SetPoint("TOPLEFT", instanceMsgLabel, "BOTTOMLEFT", 0, -5)
+    instanceMsgBg:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 8,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 }
+    })
+    instanceMsgBg:SetBackdropColor(0, 0, 0, 0.5)
+
+    local instanceMsgEditBox = CreateFrame("EditBox", nil, instanceMsgBg)
+    instanceMsgEditBox:SetPoint("TOPLEFT", 5, -5)
+    instanceMsgEditBox:SetPoint("BOTTOMRIGHT", -5, 5)
+    instanceMsgEditBox:SetMultiLine(false)
+    instanceMsgEditBox:SetAutoFocus(false)
+    instanceMsgEditBox:SetFontObject("GameFontWhite")
+    instanceMsgEditBox:SetText(FoxChatDB and FoxChatDB.instanceReplyMessage or "[자동응답] 인스턴스 던전 진행 중입니다.")
+
+    -- 쿨다운 설정
+    local cooldownLabel = replyContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    cooldownLabel:SetPoint("TOPLEFT", instanceMsgBg, "BOTTOMLEFT", -25, -20)
+    cooldownLabel:SetText("쿨다운:")
+
+    local cooldownBg = CreateFrame("Frame", nil, replyContent, "BackdropTemplate")
+    cooldownBg:SetSize(50, 25)
+    cooldownBg:SetPoint("LEFT", cooldownLabel, "RIGHT", 10, 0)
+    cooldownBg:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 8,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 }
+    })
+    cooldownBg:SetBackdropColor(0, 0, 0, 0.5)
+
+    local cooldownEditBox = CreateFrame("EditBox", nil, cooldownBg)
+    cooldownEditBox:SetPoint("TOPLEFT", 5, -5)
+    cooldownEditBox:SetPoint("BOTTOMRIGHT", -5, 5)
+    cooldownEditBox:SetMultiLine(false)
+    cooldownEditBox:SetAutoFocus(false)
+    cooldownEditBox:SetFontObject("GameFontWhite")
+    cooldownEditBox:SetNumeric(true)
+    cooldownEditBox:SetMaxLetters(3)
+    cooldownEditBox:SetText(FoxChatDB and FoxChatDB.autoReplyCooldown or "5")
+
+    local cooldownMinuteLabel = replyContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    cooldownMinuteLabel:SetPoint("LEFT", cooldownBg, "RIGHT", 5, 0)
+    cooldownMinuteLabel:SetText("분 (같은 사람에게 재응답 대기시간)")
+
+    -- 응답 도움말
+    local autoReplyHelp = replyContent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    autoReplyHelp:SetPoint("TOPLEFT", cooldownLabel, "BOTTOMLEFT", 0, -15)
+    autoReplyHelp:SetText("• AFK/DND 상태일 때는 항상 자동으로 응답합니다.\n• 전투 중이거나 인스턴스 던전에 있을 때도 개별적으로 자동응답을 설정할 수 있습니다.\n• 전투 중이거나 인던 중일 때는 같은 파티/공대원에게는 자동응답하지 않습니다.\n• 같은 사람에게는 설정된 시간 동안 한 번만 응답합니다.")
+    autoReplyHelp:SetTextColor(0.7, 0.7, 0.7)
+    autoReplyHelp:SetWordWrap(true)
+    autoReplyHelp:SetWidth(450)
+
+    -- 응답 설정값 로드 및 저장
+    if FoxChatDB then
+        combatReplyCheckbox:SetChecked(FoxChatDB.autoReplyCombat)
+        instanceReplyCheckbox:SetChecked(FoxChatDB.autoReplyInstance)
+    end
+
+    combatReplyCheckbox:SetScript("OnClick", function(self)
+        FoxChatDB = FoxChatDB or {}
+        FoxChatDB.autoReplyCombat = self:GetChecked()
+    end)
+
+    instanceReplyCheckbox:SetScript("OnClick", function(self)
+        FoxChatDB = FoxChatDB or {}
+        FoxChatDB.autoReplyInstance = self:GetChecked()
+    end)
+
+    combatMsgEditBox:SetScript("OnTextChanged", function(self)
+        FoxChatDB = FoxChatDB or {}
+        FoxChatDB.combatReplyMessage = self:GetText()
+    end)
+
+    instanceMsgEditBox:SetScript("OnTextChanged", function(self)
+        FoxChatDB = FoxChatDB or {}
+        FoxChatDB.instanceReplyMessage = self:GetText()
+    end)
+
+    cooldownEditBox:SetScript("OnTextChanged", function(self)
+        FoxChatDB = FoxChatDB or {}
+        local value = tonumber(self:GetText()) or 5
+        FoxChatDB.autoReplyCooldown = value
+    end)
+
+    -- 4) 주사위 컨텐츠 프레임
+    local rollContent = CreateFrame("Frame", nil, rightContentPanel)
+    rollContent:SetAllPoints()
+    rollContent:Hide()
+    contentFrames["roll"] = rollContent
+
+    -- 주사위 집계 레이블
+    local rollTrackerLabel = rollContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    rollTrackerLabel:SetPoint("TOPLEFT", 20, -20)
+    rollTrackerLabel:SetText("주사위 자동 집계")
+
+    -- 주사위 집계 활성화
+    local rollTrackerEnabledCheckbox = CreateFrame("CheckButton", nil, rollContent)
+    rollTrackerEnabledCheckbox:SetPoint("TOPLEFT", rollTrackerLabel, "BOTTOMLEFT", 0, -15)
+    rollTrackerEnabledCheckbox:SetSize(24, 24)
+    rollTrackerEnabledCheckbox:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
+    rollTrackerEnabledCheckbox:SetPushedTexture("Interface\\Buttons\\UI-CheckBox-Down")
+    rollTrackerEnabledCheckbox:SetHighlightTexture("Interface\\Buttons\\UI-CheckBox-Highlight")
+    rollTrackerEnabledCheckbox:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
+
+    local rollTrackerEnabledLabel = rollContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    rollTrackerEnabledLabel:SetPoint("LEFT", rollTrackerEnabledCheckbox, "RIGHT", 5, 0)
+    rollTrackerEnabledLabel:SetText("파티/공대 주사위 자동 집계 사용")
+
+    -- 집계 시간 설정
+    local rollWindowLabel = rollContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    rollWindowLabel:SetPoint("TOPLEFT", rollTrackerEnabledCheckbox, "BOTTOMLEFT", 25, -15)
+    rollWindowLabel:SetText("집계 시간:")
+
+    local rollWindowDropdown = CreateFrame("Frame", "FoxChatRollWindowDropdown", rollContent, "UIDropDownMenuTemplate")
+    rollWindowDropdown:SetPoint("LEFT", rollWindowLabel, "RIGHT", -10, -2)
+    UIDropDownMenu_SetWidth(rollWindowDropdown, 60)
+
+    local function InitializeRollWindowDropdown(self)
+        local times = {10, 15, 20, 30, 45, 60}
+
+        for _, time in ipairs(times) do
+            local info = UIDropDownMenu_CreateInfo()
+            info.text = time .. "초"
+            info.value = time
+            info.func = function()
+                UIDropDownMenu_SetSelectedValue(rollWindowDropdown, time)
+                FoxChatDB = FoxChatDB or {}
+                FoxChatDB.rollWindow = time
+            end
+            UIDropDownMenu_AddButton(info)
+        end
+    end
+
+    UIDropDownMenu_Initialize(rollWindowDropdown, InitializeRollWindowDropdown)
+    UIDropDownMenu_SetSelectedValue(rollWindowDropdown, FoxChatDB and FoxChatDB.rollWindow or 10)
+
+    -- 출력 채널 설정
+    local rollChannelLabel = rollContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    rollChannelLabel:SetPoint("TOPLEFT", rollWindowLabel, "BOTTOMLEFT", 0, -15)
+    rollChannelLabel:SetText("출력 채널:")
+
+    local rollChannelDropdown = CreateFrame("Frame", "FoxChatRollChannelDropdown2", rollContent, "UIDropDownMenuTemplate")
+    rollChannelDropdown:SetPoint("LEFT", rollChannelLabel, "RIGHT", 0, 0)
+    UIDropDownMenu_SetWidth(rollChannelDropdown, 100)
+
+    local function InitializeRollChannelDropdown(self)
+        local channels = {
+            {text = "파티/공대", value = "GROUP"},
+            {text = "나에게만", value = "SELF"}
+        }
+
+        for _, channel in ipairs(channels) do
+            local info = UIDropDownMenu_CreateInfo()
+            info.text = channel.text
+            info.value = channel.value
+            info.func = function()
+                UIDropDownMenu_SetSelectedValue(rollChannelDropdown, channel.value)
+                FoxChatDB = FoxChatDB or {}
+                FoxChatDB.rollOutputChannel = channel.value
+            end
+            UIDropDownMenu_AddButton(info)
+        end
+    end
+
+    UIDropDownMenu_Initialize(rollChannelDropdown, InitializeRollChannelDropdown)
+    UIDropDownMenu_SetSelectedValue(rollChannelDropdown, FoxChatDB and FoxChatDB.rollOutputChannel or "SELF")
+
+    -- 상위 N명 설정
+    local rollTopKLabel = rollContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    rollTopKLabel:SetPoint("TOPLEFT", rollChannelLabel, "BOTTOMLEFT", 0, -15)
+    rollTopKLabel:SetText("상위")
+
+    local rollTopKBg = CreateFrame("Frame", nil, rollContent, "BackdropTemplate")
+    rollTopKBg:SetSize(40, 25)
+    rollTopKBg:SetPoint("LEFT", rollTopKLabel, "RIGHT", 5, 0)
+    rollTopKBg:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 8,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 }
+    })
+    rollTopKBg:SetBackdropColor(0, 0, 0, 0.5)
+
+    local rollTopKEditBox = CreateFrame("EditBox", nil, rollTopKBg)
+    rollTopKEditBox:SetPoint("TOPLEFT", 5, -5)
+    rollTopKEditBox:SetPoint("BOTTOMRIGHT", -5, 5)
+    rollTopKEditBox:SetMultiLine(false)
+    rollTopKEditBox:SetAutoFocus(false)
+    rollTopKEditBox:SetFontObject("GameFontWhite")
+    rollTopKEditBox:SetNumeric(true)
+    rollTopKEditBox:SetMaxLetters(2)
+    rollTopKEditBox:SetText(FoxChatDB and FoxChatDB.rollTopK or "1")
+
+    local rollTopKHelp = rollContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    rollTopKHelp:SetPoint("LEFT", rollTopKBg, "RIGHT", 5, 0)
+    rollTopKHelp:SetText("명만 표시 (0 = 전체)")
+
+    -- 주사위 도움말
+    local rollTrackerHelp = rollContent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    rollTrackerHelp:SetPoint("TOPLEFT", rollTopKLabel, "BOTTOMLEFT", 0, -20)
+    rollTrackerHelp:SetText("• 파티원이 주사위를 굴리면 자동으로 집계합니다.\n• 설정된 시간이 지나면 결과를 선택한 채널에 출력합니다.\n• 상위 N명 설정으로 우승자만 표시하거나 상위권을 표시할 수 있습니다.")
+    rollTrackerHelp:SetTextColor(0.7, 0.7, 0.7)
+    rollTrackerHelp:SetWordWrap(true)
+    rollTrackerHelp:SetWidth(450)
+
+    -- 주사위 설정값 로드 및 저장
+    if FoxChatDB then
+        rollTrackerEnabledCheckbox:SetChecked(FoxChatDB.rollTrackerEnabled)
+    end
+
+    rollTrackerEnabledCheckbox:SetScript("OnClick", function(self)
+        FoxChatDB = FoxChatDB or {}
+        FoxChatDB.rollTrackerEnabled = self:GetChecked()
+    end)
+
+
+    rollTopKEditBox:SetScript("OnTextChanged", function(self)
+        FoxChatDB = FoxChatDB or {}
+        local value = tonumber(self:GetText()) or 1
+        FoxChatDB.rollTopK = value
+    end)
+
+    return menuButtons, contentFrames
+end
+
 local configFrame = nil
 local currentTab = 1  -- 현재 선택된 탭
 
@@ -536,8 +1066,12 @@ function FoxChat:ShowConfig()
         radioButton:SetSize(20, 20)
         radioButton:SetPoint("TOPLEFT", styleLabel, "BOTTOMLEFT", style.x, -5)
         radioButton:SetNormalTexture("Interface\\Buttons\\UI-RadioButton")
+        radioButton:GetNormalTexture():SetTexCoord(0, 0.25, 0, 1)
         radioButton:SetPushedTexture("Interface\\Buttons\\UI-RadioButton")
+        radioButton:GetPushedTexture():SetTexCoord(0.5, 0.75, 0, 1)
         radioButton:SetHighlightTexture("Interface\\Buttons\\UI-RadioButton")
+        radioButton:GetHighlightTexture():SetTexCoord(0, 0.25, 0, 1)
+        radioButton:GetHighlightTexture():SetBlendMode("ADD")
         radioButton:SetCheckedTexture("Interface\\Buttons\\UI-RadioButton")
         radioButton:GetCheckedTexture():SetTexCoord(0.25, 0.5, 0, 1)
 
@@ -1532,341 +2066,8 @@ function FoxChat:ShowConfig()
     local tab4 = tabContents[4]
     configFrame.tab4 = tab4  -- configFrame에 tab4 참조 저장
 
-    -- 1) 거래 자동 귓속말
-    local tradeAutoLabel = tab4:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    tradeAutoLabel:SetPoint("TOPLEFT", tab4, "TOPLEFT", 10, -10)
-    tradeAutoLabel:SetText("|cFFFFD700거래 자동 귓속말|r")
-
-    local tradeAutoCheckbox = CreateFrame("CheckButton", nil, tab4)
-    tradeAutoCheckbox:SetSize(24, 24)
-    tradeAutoCheckbox:SetPoint("TOPLEFT", tradeAutoLabel, "BOTTOMLEFT", 0, -5)
-    tradeAutoCheckbox:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
-    tradeAutoCheckbox:SetPushedTexture("Interface\\Buttons\\UI-CheckBox-Down")
-    tradeAutoCheckbox:SetHighlightTexture("Interface\\Buttons\\UI-CheckBox-Highlight")
-    tradeAutoCheckbox:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
-    tradeAutoCheckbox:SetChecked(FoxChatDB and FoxChatDB.autoTrade ~= false)  -- 기본값 true
-
-    local tradeAutoCheckLabel = tab4:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    tradeAutoCheckLabel:SetPoint("LEFT", tradeAutoCheckbox, "RIGHT", 5, 0)
-    tradeAutoCheckLabel:SetText("거래 완료 시 자동으로 거래 내역을 귓속말로 전송")
-
-    tradeAutoCheckbox:SetScript("OnClick", function(self)
-        if FoxChatDB then
-            FoxChatDB.autoTrade = self:GetChecked()
-        end
-    end)
-
-    local tradeHelp = tab4:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    tradeHelp:SetPoint("TOPLEFT", tradeAutoCheckbox, "BOTTOMLEFT", 0, -5)
-    tradeHelp:SetText("예시: [거래] 님에게 비단천 x5, 무거운 돌 x10을 주었고, 님은 나에게 2골드 50실버를 주었습니다.")
-    tradeHelp:SetTextColor(0.7, 0.7, 0.7)
-
-    -- 구분선
-    local separator4_1 = CreateSeparator(tab4, "TOPLEFT", tradeHelp, "BOTTOMLEFT", -10, -10)
-
-    -- 2) 파티 자동 인사
-    local partyGreetLabel = tab4:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    partyGreetLabel:SetPoint("TOPLEFT", separator4_1, "BOTTOMLEFT", 10, -10)
-    partyGreetLabel:SetText("|cFFFFD700파티 자동 인사|r |cFF808080(인사말은 랜덤하게 출력됩니다)|r")
-
-    -- 2-1) 내가 파티에 참가할 때 (왼쪽 컬럼)
-    local myJoinCheckbox = CreateFrame("CheckButton", nil, tab4)
-    myJoinCheckbox:SetSize(20, 20)
-    myJoinCheckbox:SetPoint("TOPLEFT", partyGreetLabel, "BOTTOMLEFT", 0, -10)
-    myJoinCheckbox:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
-    myJoinCheckbox:SetPushedTexture("Interface\\Buttons\\UI-CheckBox-Down")
-    myJoinCheckbox:SetHighlightTexture("Interface\\Buttons\\UI-CheckBox-Highlight")
-    myJoinCheckbox:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
-    myJoinCheckbox:SetChecked(FoxChatDB and FoxChatDB.autoPartyGreetMyJoin)
-
-    local myJoinCheckLabel = tab4:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    myJoinCheckLabel:SetPoint("LEFT", myJoinCheckbox, "RIGHT", 3, 0)
-    myJoinCheckLabel:SetText("내가 참가할 때")
-
-    myJoinCheckbox:SetScript("OnClick", function(self)
-        if FoxChatDB then
-            FoxChatDB.autoPartyGreetMyJoin = self:GetChecked()
-        end
-    end)
-
-    -- 내가 참가할 때 인사말 목록
-    local myJoinListLabel = tab4:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    myJoinListLabel:SetPoint("TOPLEFT", myJoinCheckbox, "BOTTOMLEFT", 0, -8)
-    myJoinListLabel:SetText("인사말 ({me}=내 이름):")
-    myJoinListLabel:SetTextColor(0.8, 0.8, 0.8)
-
-    -- 내가 참가할 때 인사말 입력창 (광고 설정과 완전히 동일한 방식)
-    local myJoinBackground, myJoinEditBox = CreateTextArea(tab4, 260, 120, 0)  -- 광고와 같은 크기
-    myJoinBackground:SetPoint("TOPLEFT", myJoinListLabel, "BOTTOMLEFT", 0, -5)  -- 광고와 같은 간격
-
-    -- 기본 인사말 설정
-    local defaultMyJoinGreets = "안녕하세요! {me}입니다. 잘 부탁드려요!\n반갑습니다~ 함께 모험해요!\n파티 초대 감사합니다!"
-
-    -- 기존 텍스트 설정 (광고와 완전 동일한 방식)
-    local myJoinText = ""
-    if FoxChatDB and FoxChatDB.partyGreetMyJoinMessages then
-        myJoinText = table.concat(FoxChatDB.partyGreetMyJoinMessages, "\n")
-    else
-        myJoinText = defaultMyJoinGreets
-    end
-    myJoinEditBox:SetText(myJoinText)
-
-    -- 텍스트 변경 시 DB 저장 (광고와 동일한 방식)
-    myJoinEditBox:HookScript("OnTextChanged", function(self, user)
-        if FoxChatDB then
-            local text = self:GetText() or ""
-            local messages = {}
-            for line in string.gmatch(text, "[^\n]+") do
-                local trimmed = string.gsub(line, "^%s*(.-)%s*$", "%1")
-                if trimmed ~= "" then
-                    table.insert(messages, trimmed)
-                end
-            end
-            FoxChatDB.partyGreetMyJoinMessages = messages
-        end
-    end)
-
-    -- 초기 DB 저장
-    C_Timer.After(0.2, function()
-        if FoxChatDB then
-            local text = myJoinEditBox:GetText() or ""
-            local messages = {}
-            for line in string.gmatch(text, "[^\n]+") do
-                local trimmed = string.gsub(line, "^%s*(.-)%s*$", "%1")
-                if trimmed ~= "" then
-                    table.insert(messages, trimmed)
-                end
-            end
-            if #messages == 0 then
-                -- 기본값 적용
-                for line in string.gmatch(defaultMyJoinGreets, "[^\n]+") do
-                    local trimmed = string.gsub(line, "^%s*(.-)%s*$", "%1")
-                    if trimmed ~= "" then
-                        table.insert(messages, trimmed)
-                    end
-                end
-            end
-            FoxChatDB.partyGreetMyJoinMessages = messages
-        end
-    end)
-
-    -- 2-2) 다른 사람이 파티에 참가할 때 (오른쪽 컬럼)
-    local othersJoinCheckbox = CreateFrame("CheckButton", nil, tab4)
-    othersJoinCheckbox:SetSize(20, 20)
-    othersJoinCheckbox:SetPoint("TOPLEFT", partyGreetLabel, "BOTTOMLEFT", 280, -10)
-    othersJoinCheckbox:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
-    othersJoinCheckbox:SetPushedTexture("Interface\\Buttons\\UI-CheckBox-Down")
-    othersJoinCheckbox:SetHighlightTexture("Interface\\Buttons\\UI-CheckBox-Highlight")
-    othersJoinCheckbox:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
-    othersJoinCheckbox:SetChecked(FoxChatDB and FoxChatDB.autoPartyGreetOthersJoin)
-
-    local othersJoinCheckLabel = tab4:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    othersJoinCheckLabel:SetPoint("LEFT", othersJoinCheckbox, "RIGHT", 3, 0)
-    othersJoinCheckLabel:SetText("다른 사람이 참가할 때")
-
-    othersJoinCheckbox:SetScript("OnClick", function(self)
-        if FoxChatDB then
-            FoxChatDB.autoPartyGreetOthersJoin = self:GetChecked()
-        end
-    end)
-
-    -- 다른 사람 참가 시 인사말 목록
-    local othersJoinListLabel = tab4:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    othersJoinListLabel:SetPoint("TOPLEFT", othersJoinCheckbox, "BOTTOMLEFT", 0, -8)
-    othersJoinListLabel:SetText("인사말 ({target}=상대 이름):")
-    othersJoinListLabel:SetTextColor(0.8, 0.8, 0.8)
-
-    -- 다른 사람이 참가할 때 인사말 입력창 (광고 설정과 완전히 동일한 방식)
-    local othersJoinBackground, othersJoinEditBox = CreateTextArea(tab4, 260, 120, 0)  -- 광고와 같은 크기
-    othersJoinBackground:SetPoint("TOPLEFT", othersJoinListLabel, "BOTTOMLEFT", 0, -5)  -- 광고와 같은 간격
-
-    -- 기본 인사말 설정
-    local defaultOthersJoinGreets = "{target}님 환영합니다!\n{target}님 반갑습니다~\n어서오세요 {target}님!"
-
-    -- 기존 텍스트 설정 (광고와 완전 동일한 방식)
-    local othersJoinText = ""
-    if FoxChatDB and FoxChatDB.partyGreetOthersJoinMessages then
-        othersJoinText = table.concat(FoxChatDB.partyGreetOthersJoinMessages, "\n")
-    else
-        othersJoinText = defaultOthersJoinGreets
-    end
-    othersJoinEditBox:SetText(othersJoinText)
-
-    -- 텍스트 변경 시 DB 저장 (광고와 동일한 방식)
-    othersJoinEditBox:HookScript("OnTextChanged", function(self, user)
-        if FoxChatDB then
-            local text = self:GetText() or ""
-            local messages = {}
-            for line in string.gmatch(text, "[^\n]+") do
-                local trimmed = string.gsub(line, "^%s*(.-)%s*$", "%1")
-                if trimmed ~= "" then
-                    table.insert(messages, trimmed)
-                end
-            end
-            FoxChatDB.partyGreetOthersJoinMessages = messages
-        end
-    end)
-
-    -- 초기 DB 저장
-    C_Timer.After(0.25, function()
-        if FoxChatDB then
-            local text = othersJoinEditBox:GetText() or ""
-            local messages = {}
-            for line in string.gmatch(text, "[^\n]+") do
-                local trimmed = string.gsub(line, "^%s*(.-)%s*$", "%1")
-                if trimmed ~= "" then
-                    table.insert(messages, trimmed)
-                end
-            end
-            if #messages == 0 then
-                -- 기본값 적용
-                for line in string.gmatch(defaultOthersJoinGreets, "[^\n]+") do
-                    local trimmed = string.gsub(line, "^%s*(.-)%s*$", "%1")
-                    if trimmed ~= "" then
-                        table.insert(messages, trimmed)
-                    end
-                end
-            end
-            FoxChatDB.partyGreetOthersJoinMessages = messages
-        end
-    end)
-
-
-    -- 스크롤 프레임 제거하고 직접 tab4에 배치 (광고 설정과 동일하게)
-
-    -- 구분선
-    local separator4_2 = CreateSeparator(tab4, "TOPLEFT", myJoinBackground, "BOTTOMLEFT", -10, -10)
-
-    -- 3) 주사위 자동 집계
-    local rollTrackerLabel = tab4:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    rollTrackerLabel:SetPoint("TOPLEFT", separator4_2, "BOTTOMLEFT", 10, -10)
-    rollTrackerLabel:SetText("|cFFFFD700주사위 자동 집계|r")
-
-    -- 주사위 집계 활성화 체크박스
-    local rollTrackerEnabledCheckbox = CreateFrame("CheckButton", nil, tab4)
-    rollTrackerEnabledCheckbox:SetSize(24, 24)
-    rollTrackerEnabledCheckbox:SetPoint("TOPLEFT", rollTrackerLabel, "BOTTOMLEFT", 0, -5)
-    rollTrackerEnabledCheckbox:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
-    rollTrackerEnabledCheckbox:SetPushedTexture("Interface\\Buttons\\UI-CheckBox-Down")
-    rollTrackerEnabledCheckbox:SetHighlightTexture("Interface\\Buttons\\UI-CheckBox-Highlight")
-    rollTrackerEnabledCheckbox:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
-    rollTrackerEnabledCheckbox:SetChecked(FoxChatDB and FoxChatDB.rollTrackerEnabled)
-
-    local rollTrackerEnabledLabel = tab4:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    rollTrackerEnabledLabel:SetPoint("LEFT", rollTrackerEnabledCheckbox, "RIGHT", 5, 0)
-    rollTrackerEnabledLabel:SetText("파티/공대 주사위 자동 집계 사용")
-
-    rollTrackerEnabledCheckbox:SetScript("OnClick", function(self)
-        if FoxChatDB then
-            FoxChatDB.rollTrackerEnabled = self:GetChecked()
-            if addon.RollTracker then
-                addon.RollTracker:SetEnabled(FoxChatDB.rollTrackerEnabled)
-            end
-        end
-    end)
-
-    -- 집계 시간 설정
-    local rollWindowLabel = tab4:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    rollWindowLabel:SetPoint("TOPLEFT", rollTrackerEnabledCheckbox, "BOTTOMLEFT", 0, -10)
-    rollWindowLabel:SetText("집계 시간:")
-
-    -- 드롭다운 메뉴 생성
-    local rollWindowDropdown = CreateFrame("Frame", "FoxChatRollWindowDropdown", tab4, "UIDropDownMenuTemplate")
-    rollWindowDropdown:SetPoint("LEFT", rollWindowLabel, "RIGHT", 0, 0)
-    UIDropDownMenu_SetWidth(rollWindowDropdown, 100)
-
-    -- 드롭다운 초기화 함수
-    local function RollWindowDropdown_Initialize(self, level)
-        local info = UIDropDownMenu_CreateInfo()
-        local options = {
-            {value = 5, text = "5초"},
-            {value = 10, text = "10초"},
-            {value = 15, text = "15초"},
-            {value = 20, text = "20초"},
-            {value = 30, text = "30초"},
-            {value = 60, text = "60초"}
-        }
-
-        for _, option in ipairs(options) do
-            info.text = option.text
-            info.value = option.value
-            info.func = function()
-                UIDropDownMenu_SetSelectedValue(rollWindowDropdown, option.value)
-                if FoxChatDB then
-                    FoxChatDB.rollTrackerWindowSec = option.value
-                    if addon.RollTracker then
-                        addon.RollTracker:SetWindowSec(option.value)
-                    end
-                end
-            end
-            info.checked = ((FoxChatDB and FoxChatDB.rollTrackerWindowSec or 20) == option.value)
-            UIDropDownMenu_AddButton(info, level)
-        end
-    end
-
-    UIDropDownMenu_Initialize(rollWindowDropdown, RollWindowDropdown_Initialize)
-    UIDropDownMenu_SetSelectedValue(rollWindowDropdown, (FoxChatDB and FoxChatDB.rollTrackerWindowSec) or 20)
-    UIDropDownMenu_SetText(rollWindowDropdown, tostring((FoxChatDB and FoxChatDB.rollTrackerWindowSec) or 20) .. "초")
-
-    -- 출력 등수 설정
-    local rollTopKLabel = tab4:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    rollTopKLabel:SetPoint("TOPLEFT", rollWindowLabel, "BOTTOMLEFT", 0, -15)
-    rollTopKLabel:SetText("출력 등수:")
-
-    local rollTopKEditBox = CreateFrame("EditBox", nil, tab4)
-    rollTopKEditBox:SetSize(40, 20)
-    rollTopKEditBox:SetPoint("LEFT", rollTopKLabel, "RIGHT", 10, 0)
-    rollTopKEditBox:SetAutoFocus(false)
-    rollTopKEditBox:SetMaxLetters(2)
-    rollTopKEditBox:SetNumeric(true)
-    rollTopKEditBox:SetFontObject(GameFontHighlight)
-    rollTopKEditBox:SetText(tostring((FoxChatDB and FoxChatDB.rollTrackerTopK) or 1))
-
-    local rollTopKBg = CreateFrame("Frame", nil, tab4, "BackdropTemplate")
-    rollTopKBg:SetPoint("TOPLEFT", rollTopKEditBox, -5, 5)
-    rollTopKBg:SetPoint("BOTTOMRIGHT", rollTopKEditBox, 5, -5)
-    rollTopKBg:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 8,
-        insets = { left = 2, right = 2, top = 2, bottom = 2 }
-    })
-    rollTopKBg:SetBackdropColor(0, 0, 0, 0.8)
-
-    local rollTopKHelp = tab4:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    rollTopKHelp:SetPoint("LEFT", rollTopKBg, "RIGHT", 10, 0)
-    rollTopKHelp:SetText("(1=우승자만, 2~40=상위 N명)")
-    rollTopKHelp:SetTextColor(0.7, 0.7, 0.7)
-
-    rollTopKEditBox:SetScript("OnTextChanged", function(self)
-        local value = tonumber(self:GetText())
-        if value and FoxChatDB then
-            local clamped = math.max(1, math.min(40, value))
-            FoxChatDB.rollTrackerTopK = clamped
-            if addon.RollTracker then
-                addon.RollTracker:SetTopK(clamped)
-            end
-        end
-    end)
-
-    rollTopKEditBox:SetScript("OnEscapePressed", function(self)
-        self:ClearFocus()
-    end)
-
-    -- 설명 텍스트
-    local rollTrackerHelp = tab4:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    rollTrackerHelp:SetPoint("TOPLEFT", rollTopKLabel, "BOTTOMLEFT", 0, -10)
-    rollTrackerHelp:SetWidth(540)
-    rollTrackerHelp:SetHeight(50)
-    rollTrackerHelp:SetJustifyH("LEFT")
-    rollTrackerHelp:SetJustifyV("TOP")
-    rollTrackerHelp:SetText(
-        "• 파티/공대에서 누군가 주사위를 굴리면 자동으로 집계를 시작합니다.\n" ..
-        "• 설정한 시간이 지나면 우승자 또는 상위 N명을 채널에 자동 출력합니다.\n" ..
-        "• 같은 사람이 여러 번 굴리면 마지막 값만 반영됩니다.\n" ..
-        "• 동점자는 모두 함께 표시됩니다."
-    )
-    rollTrackerHelp:SetTextColor(0.7, 0.7, 0.7)
+    -- CreateAutoTab 함수 호출하여 자동 탭 내용 생성
+    CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, CreateSeparator)
 
     -- =============================================
     -- 하단 버튼들
@@ -1978,6 +2179,17 @@ function FoxChat:ShowConfig()
                         "{target}님 반갑습니다~",
                         "어서오세요 {target}님!"
                     }
+                    -- AFK/DND 자동응답 초기화
+                    FoxChatDB.autoReplyAFK = false
+                    FoxChatDB.autoReplyCombat = false
+                    FoxChatDB.autoReplyInstance = false
+                    FoxChatDB.combatReplyMessage = "[자동응답] 전투 중입니다. 잠시 후 답변드리겠습니다!"
+                    FoxChatDB.instanceReplyMessage = "[자동응답] 인던 중입니다. 나중에 답변드리겠습니다!"
+                    FoxChatDB.autoReplyCooldown = 5
+                    -- 주사위 집계 초기화
+                    FoxChatDB.rollTrackerEnabled = false
+                    FoxChatDB.rollSessionDuration = 20
+                    FoxChatDB.rollTopK = 0
                 end
 
                 -- UI 업데이트
@@ -2075,6 +2287,60 @@ function FoxChat:ShowConfig()
         -- 안내 텍스트 업데이트
         if tabContents and tabContents[3] and tabContents[3].UpdateInfoText then
             tabContents[3].UpdateInfoText()
+        end
+
+        -- 탭 4 - 자동 탭 업데이트
+        -- 거래
+        if configFrame.tradeAutoCheckbox then
+            configFrame.tradeAutoCheckbox:SetChecked(FoxChatDB and FoxChatDB.autoTrade ~= false)
+        end
+
+        -- 인사
+        if configFrame.myJoinCheckbox then
+            configFrame.myJoinCheckbox:SetChecked(FoxChatDB and FoxChatDB.autoPartyGreetMyJoin)
+        end
+        if configFrame.othersJoinCheckbox then
+            configFrame.othersJoinCheckbox:SetChecked(FoxChatDB and FoxChatDB.autoPartyGreetOthersJoin)
+        end
+
+        -- 응답
+        if configFrame.autoReplyAFKCheckbox then
+            configFrame.autoReplyAFKCheckbox:SetChecked(FoxChatDB and FoxChatDB.autoReplyAFK)
+        end
+        if configFrame.autoReplyCombatCheckbox then
+            configFrame.autoReplyCombatCheckbox:SetChecked(FoxChatDB and FoxChatDB.autoReplyCombat)
+        end
+        if configFrame.combatMsgEditBox then
+            configFrame.combatMsgEditBox:SetText((FoxChatDB and FoxChatDB.combatReplyMessage) or "[자동응답] 전투 중입니다. 잠시 후 답변드리겠습니다!")
+        end
+        if configFrame.autoReplyInstanceCheckbox then
+            configFrame.autoReplyInstanceCheckbox:SetChecked(FoxChatDB and FoxChatDB.autoReplyInstance)
+        end
+        if configFrame.instanceMsgEditBox then
+            configFrame.instanceMsgEditBox:SetText((FoxChatDB and FoxChatDB.instanceReplyMessage) or "[자동응답] 인던 중입니다. 나중에 답변드리겠습니다!")
+        end
+        if configFrame.autoReplyCooldownEditBox then
+            configFrame.autoReplyCooldownEditBox:SetText((FoxChatDB and FoxChatDB.autoReplyCooldown) or "5")
+        end
+
+        -- 주사위
+        if configFrame.rollTrackerEnabledCheckbox then
+            configFrame.rollTrackerEnabledCheckbox:SetChecked(FoxChatDB and FoxChatDB.rollTrackerEnabled)
+        end
+        if configFrame.rollDurationEditBox then
+            configFrame.rollDurationEditBox:SetText(tostring((FoxChatDB and FoxChatDB.rollSessionDuration) or 20))
+        end
+        if configFrame.rollWinnerOnlyRadio and configFrame.rollTopKRadio then
+            if FoxChatDB and FoxChatDB.rollTopK and FoxChatDB.rollTopK > 0 then
+                configFrame.rollTopKRadio:SetChecked(true)
+                configFrame.rollWinnerOnlyRadio:SetChecked(false)
+            else
+                configFrame.rollWinnerOnlyRadio:SetChecked(true)
+                configFrame.rollTopKRadio:SetChecked(false)
+            end
+        end
+        if configFrame.rollTopKEditBox then
+            configFrame.rollTopKEditBox:SetText(tostring((FoxChatDB and FoxChatDB.rollTopK) or 3))
         end
     end
 
