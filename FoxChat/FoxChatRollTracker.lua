@@ -302,6 +302,7 @@ function RT:FinishSession()
         print("[RT:FinishSession] 세션 종료 시작")
         print("  세션 지속 시간:", math.floor(GetTime() - self.sessionStart), "초")
         print("  저장된 메시지 수:", #self.rollMessages)
+        print("  집계 사용 설정:", FoxChatDB and FoxChatDB.rollTrackerEnabled and "켜짐" or "꺼짐")
     end
 
     if not self.sessionActive then
@@ -312,6 +313,16 @@ function RT:FinishSession()
     end
     self.sessionActive = false
     self.deadline = nil  -- 워치독 타이머 클리어
+
+    -- 집계 사용이 꺼져있으면 출력하지 않음
+    if not (FoxChatDB and FoxChatDB.rollTrackerEnabled) then
+        if addon.DebugMode then
+            print("  [RT:FinishSession] 집계 사용이 꺼져있어 결과를 출력하지 않음")
+        end
+        -- 저장된 메시지 초기화
+        wipe(self.rollMessages)
+        return
+    end
 
     -- 저장된 메시지들에서 최고값 찾기
     if #self.rollMessages > 0 then
@@ -489,6 +500,14 @@ end
 
 -- 주사위 메시지 저장
 function RT:AddRollMessage(msg)
+    -- 집계 사용이 꺼져있으면 저장하지 않음
+    if not (FoxChatDB and FoxChatDB.rollTrackerEnabled) then
+        if addon.DebugMode then
+            print("[RT:AddRollMessage] 집계 사용이 꺼져있어 메시지를 저장하지 않음")
+        end
+        return
+    end
+
     if addon.DebugMode then
         print("[RT:AddRollMessage] 메시지 저장:", msg)
     end
