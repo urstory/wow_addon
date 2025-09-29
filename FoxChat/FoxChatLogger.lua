@@ -2,8 +2,8 @@
 -- 채팅 로그 핵심 모듈 (Classic 1.15 성능 최적화 버전)
 
 local addonName, addon = ...
-addon.ChatLogger = addon.ChatLogger or {}
-local CL = addon.ChatLogger
+addon.FoxChatLogger = addon.FoxChatLogger or {}
+local CL = addon.FoxChatLogger
 
 -- === 설정 기본값 ===
 CL.cfg = {
@@ -119,6 +119,12 @@ function CL:CleanOldLogs()
     local keep = tonumber(config.retentionDays) or CL.cfg.retentionDays
     keep = math.max(1, math.min(30, keep))
     local now = GetServerTime()
+
+    -- chatLogs가 없으면 초기화
+    if not FoxChatDB.chatLogs then
+        FoxChatDB.chatLogs = {}
+        return
+    end
 
     for dayKey in pairs(FoxChatDB.chatLogs) do
         -- dayKey "YYYYMMDD" → 해당 0시를 계산

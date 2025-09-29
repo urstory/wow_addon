@@ -166,7 +166,7 @@ local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, Creat
     partyGreetLabel:SetPoint("TOPLEFT", 20, -20)
     partyGreetLabel:SetText("파티 자동인사")
 
-    -- 내가 참가할 때
+    -- 왼쪽 열: 내가 참가할 때
     local myJoinCheckbox = CreateFrame("CheckButton", nil, greetContent)
     myJoinCheckbox:SetPoint("TOPLEFT", partyGreetLabel, "BOTTOMLEFT", 0, -15)
     myJoinCheckbox:SetSize(24, 24)
@@ -179,17 +179,18 @@ local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, Creat
     myJoinCheckLabel:SetPoint("LEFT", myJoinCheckbox, "RIGHT", 5, 0)
     myJoinCheckLabel:SetText("내가 파티에 참가할 때 인사")
 
-    -- 내가 참가 메시지 입력창
+    -- 내가 참가 메시지 입력창 (너비 축소)
     local myJoinListLabel = greetContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     myJoinListLabel:SetPoint("TOPLEFT", myJoinCheckbox, "BOTTOMLEFT", 25, -10)
-    myJoinListLabel:SetText("인사말 목록 (한 줄에 하나씩, 랜덤 선택, {me}는 내 이름으로 치환):")
+    myJoinListLabel:SetText("인사말 (한 줄에 하나씩, 랜덤):")
+    myJoinListLabel:SetWidth(240)
 
-    local myJoinBackground, myJoinEditBox = CreateTextArea(greetContent, 400, 80, 0)
+    local myJoinBackground, myJoinEditBox = CreateTextArea(greetContent, 240, 75, 0)
     myJoinBackground:SetPoint("TOPLEFT", myJoinListLabel, "BOTTOMLEFT", 0, -5)
 
-    -- 다른 사람이 참가할 때
+    -- 오른쪽 열: 다른 사람이 참가할 때 (위치 조정)
     local othersJoinCheckbox = CreateFrame("CheckButton", nil, greetContent)
-    othersJoinCheckbox:SetPoint("TOPLEFT", myJoinBackground, "BOTTOMLEFT", -25, -20)
+    othersJoinCheckbox:SetPoint("TOPLEFT", myJoinCheckbox, "TOPLEFT", 260, 0)  -- 간격 줄임
     othersJoinCheckbox:SetSize(24, 24)
     othersJoinCheckbox:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
     othersJoinCheckbox:SetPushedTexture("Interface\\Buttons\\UI-CheckBox-Down")
@@ -198,15 +199,47 @@ local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, Creat
 
     local othersJoinCheckLabel = greetContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     othersJoinCheckLabel:SetPoint("LEFT", othersJoinCheckbox, "RIGHT", 5, 0)
-    othersJoinCheckLabel:SetText("다른 사람이 파티에 참가할 때 인사")
+    othersJoinCheckLabel:SetText("다른 사람이 파티에 참가할 때")
 
-    -- 다른 사람 참가 메시지 입력창
+    -- 다른 사람 참가 메시지 입력창 (너비 축소)
     local othersJoinListLabel = greetContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     othersJoinListLabel:SetPoint("TOPLEFT", othersJoinCheckbox, "BOTTOMLEFT", 25, -10)
-    othersJoinListLabel:SetText("인사말 목록 (한 줄에 하나씩, {name}은 참가자 이름으로 치환):")
+    othersJoinListLabel:SetText("인사말 ({name}은 참가자 이름):")
+    othersJoinListLabel:SetWidth(240)
 
-    local othersJoinBackground, othersJoinEditBox = CreateTextArea(greetContent, 400, 80, 0)
+    local othersJoinBackground, othersJoinEditBox = CreateTextArea(greetContent, 240, 75, 0)
     othersJoinBackground:SetPoint("TOPLEFT", othersJoinListLabel, "BOTTOMLEFT", 0, -5)
+
+    -- =============================================
+    -- 리더 전용 인사말 섹션
+    -- =============================================
+
+    -- 구분선 추가 (왼쪽 텍스트박스 기준으로 조정)
+    local leaderSeparator = CreateSeparator(greetContent)
+    leaderSeparator:SetPoint("TOPLEFT", myJoinBackground, "BOTTOMLEFT", -25, -15)
+    leaderSeparator:SetPoint("RIGHT", greetContent, "RIGHT", -20, 0)
+
+    -- 리더 전용 섹션 제목
+    local leaderTitle = greetContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    leaderTitle:SetPoint("TOPLEFT", leaderSeparator, "BOTTOMLEFT", 0, -10)
+    leaderTitle:SetText("리더 전용 인사말 (모든 줄이 순서대로 출력)")
+    leaderTitle:SetTextColor(1, 0.8, 0)  -- 금색으로 강조
+
+    -- 파티장 인사말 (전체 너비 사용)
+    local partyLeaderLabel = greetContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    partyLeaderLabel:SetPoint("TOPLEFT", leaderTitle, "BOTTOMLEFT", 0, -10)
+    partyLeaderLabel:SetText("내가 파티장일 때 다른 사람이 참가하면:")
+
+    local partyLeaderBackground, partyLeaderEditBox = CreateTextArea(greetContent, 500, 75, 0)
+    partyLeaderBackground:SetPoint("TOPLEFT", partyLeaderLabel, "BOTTOMLEFT", 0, -5)
+
+    -- 공대장 인사말 (전체 너비 사용)
+    local raidLeaderLabel = greetContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    raidLeaderLabel:SetPoint("TOPLEFT", partyLeaderBackground, "BOTTOMLEFT", 0, -10)
+    raidLeaderLabel:SetText("내가 공대장일 때 다른 사람이 참가하면:")
+
+    local raidLeaderBackground, raidLeaderEditBox = CreateTextArea(greetContent, 500, 75, 0)
+    raidLeaderBackground:SetPoint("TOPLEFT", raidLeaderLabel, "BOTTOMLEFT", 0, -5)
 
     -- 인사 설정값 로드
     if FoxChatDB then
@@ -214,6 +247,18 @@ local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, Creat
         othersJoinCheckbox:SetChecked(FoxChatDB.autoGreetOnOthersJoin)
         myJoinEditBox:SetText(FoxChatDB.myJoinMessages or "안녕하세요!\n반갑습니다!")
         othersJoinEditBox:SetText(FoxChatDB.othersJoinMessages or "{name}님 환영합니다!\n{name}님 어서오세요!")
+        -- 리더 전용 인사말 로드 (빈 값일 경우에만 예시 표시)
+        if FoxChatDB.leaderGreetRaidMessages ~= nil then
+            raidLeaderEditBox:SetText(FoxChatDB.leaderGreetRaidMessages)
+        else
+            raidLeaderEditBox:SetText("{name}님 환영합니다!\n공대장입니다.\n디스코드 참여해주세요!")
+        end
+
+        if FoxChatDB.leaderGreetPartyMessages ~= nil then
+            partyLeaderEditBox:SetText(FoxChatDB.leaderGreetPartyMessages)
+        else
+            partyLeaderEditBox:SetText("{name}님 환영합니다!\n파티장입니다.")
+        end
     end
 
     myJoinCheckbox:SetScript("OnClick", function(self)
@@ -234,6 +279,17 @@ local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, Creat
     othersJoinEditBox:SetScript("OnTextChanged", function(self)
         FoxChatDB = FoxChatDB or {}
         FoxChatDB.othersJoinMessages = self:GetText()
+    end)
+
+    -- 리더 전용 인사말 저장 이벤트
+    raidLeaderEditBox:SetScript("OnTextChanged", function(self)
+        FoxChatDB = FoxChatDB or {}
+        FoxChatDB.leaderGreetRaidMessages = self:GetText() or ""
+    end)
+
+    partyLeaderEditBox:SetScript("OnTextChanged", function(self)
+        FoxChatDB = FoxChatDB or {}
+        FoxChatDB.leaderGreetPartyMessages = self:GetText() or ""
     end)
 
     -- 3) 응답 컨텐츠 프레임
@@ -730,72 +786,129 @@ local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, Creat
     searchPanel:SetSize(540, 30)
     searchPanel:SetPoint("TOPLEFT", controlPanel, "BOTTOMLEFT", 0, -5)
 
-    -- 메시지 표시 영역 (가상 스크롤)
-    local messageFrame = CreateFrame("ScrollFrame", "FoxChatLogMessageFrame", chatlogContent, "FauxScrollFrameTemplate")
-    messageFrame:SetPoint("TOPLEFT", searchPanel, "BOTTOMLEFT", 0, -5)
-    messageFrame:SetPoint("BOTTOMRIGHT", chatlogContent, "BOTTOMRIGHT", -25, 5)
+    -- 메시지 표시 영역 (에디터창 스타일)
+    local messageAreaBg, messageEditBox = CreateTextArea(chatlogContent, 540, 280, 0)
+    messageAreaBg:SetPoint("TOPLEFT", searchPanel, "BOTTOMLEFT", 0, -5)
 
-    -- 메시지 행 프레임들 생성
-    local MESSAGE_HEIGHT = 14
-    local MAX_DISPLAY_LINES = 25
-    local messageRows = {}
+    -- 에디터창을 읽기 전용으로 설정
+    messageEditBox:EnableMouse(true)
+    messageEditBox:EnableKeyboard(false)
+    messageEditBox:SetScript("OnEditFocusGained", function(self) self:ClearFocus() end)
+    messageEditBox:SetTextColor(0.9, 0.9, 0.9)
 
-    for i = 1, MAX_DISPLAY_LINES do
-        local row = CreateFrame("Button", nil, chatlogContent)
-        row:SetHeight(MESSAGE_HEIGHT)
-        row:SetPoint("TOPLEFT", messageFrame, "TOPLEFT", 5, -(i-1) * MESSAGE_HEIGHT)
-        row:SetPoint("RIGHT", messageFrame, "RIGHT", -5, 0)
+    -- 전방 선언
+    local UpdateMessageDisplay
+    local channelFilterDropdown
+    local selectedChannelFilter = "ALL"
+    local searchBox
+    local searchResultLabel
+    local isSearchActive = false  -- 검색 활성화 상태
+    local allMessages = {}  -- 원본 메시지 리스트
+    local currentMessages = {}  -- 현재 표시 중인 메시지 리스트
+    local selectedMessageIndex = nil  -- 선택된 메시지 인덱스
 
-        -- 배경 하이라이트
-        local highlight = row:CreateTexture(nil, "BACKGROUND")
-        highlight:SetAllPoints()
-        highlight:SetColorTexture(1, 1, 1, 0)
-        row.highlight = highlight
+    -- 메시지 더블클릭 시 컨텍스트 팝업 표시
+    messageEditBox:SetScript("OnMouseUp", function(self, button)
+        if button == "LeftButton" and isSearchActive then
+            -- 더블클릭 감지를 위한 간단한 처리
+            local cursorPos = self:GetCursorPosition()
+            local text = self:GetText()
+            local lineStart, lineEnd = 1, 1
+            local lineNum = 1
 
-        -- 시간 텍스트
-        local timeText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        timeText:SetPoint("LEFT", 0, 0)
-        timeText:SetTextColor(0.6, 0.6, 0.6)
-        timeText:SetWidth(50)
-        timeText:SetJustifyH("LEFT")
-        row.timeText = timeText
+            -- 커서 위치에 해당하는 라인 찾기
+            for i = 1, #text do
+                if i == cursorPos then
+                    break
+                end
+                if text:sub(i, i) == "\n" then
+                    lineNum = lineNum + 1
+                    lineStart = i + 1
+                end
+            end
 
-        -- 채널 텍스트
-        local channelText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        channelText:SetPoint("LEFT", timeText, "RIGHT", 5, 0)
-        channelText:SetWidth(40)
-        channelText:SetJustifyH("LEFT")
-        row.channelText = channelText
+            -- 해당 라인의 메시지 인덱스 찾기
+            if currentMessages[lineNum] and currentMessages[lineNum].originalIndex then
+                local originalIndex = currentMessages[lineNum].originalIndex
 
-        -- 발신자 텍스트
-        local senderText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        senderText:SetPoint("LEFT", channelText, "RIGHT", 5, 0)
-        senderText:SetWidth(80)
-        senderText:SetJustifyH("LEFT")
-        row.senderText = senderText
+                -- 컨텍스트 팝업 생성
+                local contextPopup = CreateFrame("Frame", "FoxChatContextPopup", UIParent, "BackdropTemplate")
+                contextPopup:SetSize(500, 200)
+                contextPopup:SetPoint("CENTER")
+                contextPopup:SetBackdrop({
+                    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+                    edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+                    edgeSize = 16,
+                    insets = {left = 4, right = 4, top = 4, bottom = 4}
+                })
+                contextPopup:SetFrameStrata("FULLSCREEN_DIALOG")
+                contextPopup:SetFrameLevel(1000)
+                contextPopup:EnableMouse(true)
+                contextPopup:SetMovable(true)
+                contextPopup:RegisterForDrag("LeftButton")
+                contextPopup:SetScript("OnDragStart", contextPopup.StartMoving)
+                contextPopup:SetScript("OnDragStop", contextPopup.StopMovingOrSizing)
 
-        -- 메시지 텍스트
-        local msgText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        msgText:SetPoint("LEFT", senderText, "RIGHT", 5, 0)
-        msgText:SetPoint("RIGHT", -10, 0)
-        msgText:SetJustifyH("LEFT")
-        msgText:SetWordWrap(false)
-        row.msgText = msgText
+                -- 타이틀
+                local title = contextPopup:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+                title:SetPoint("TOP", 0, -10)
+                title:SetText("메시지 컨텍스트")
 
-        -- 호버 효과
-        row:SetScript("OnEnter", function(self)
-            self.highlight:SetColorTexture(1, 1, 1, 0.1)
-        end)
-        row:SetScript("OnLeave", function(self)
-            self.highlight:SetColorTexture(1, 1, 1, 0)
-        end)
+                -- 닫기 버튼
+                local closeButton = CreateFrame("Button", nil, contextPopup, "UIPanelCloseButton")
+                closeButton:SetPoint("TOPRIGHT", -5, -5)
 
-        messageRows[i] = row
-    end
+                -- 텍스트 영역
+                local textAreaBg, textAreaEditBox = CreateTextArea(contextPopup, 470, 150, 0)
+                textAreaBg:SetPoint("TOP", title, "BOTTOM", 0, -10)
+
+                -- 에디터창을 읽기 전용으로 설정
+                textAreaEditBox:EnableKeyboard(false)
+                textAreaEditBox:SetScript("OnEditFocusGained", function(self) self:ClearFocus() end)
+
+                -- 컨텍스트 메시지 구성 (앞뒤 3줄)
+                local contextLines = {}
+                local startIdx = math.max(1, originalIndex - 3)
+                local endIdx = math.min(#allMessages, originalIndex + 3)
+
+                for i = startIdx, endIdx do
+                    local msg = allMessages[i]
+                    local timeStr = date("[%H:%M:%S]", msg.ts)
+                    local channelName = Logger:GetChannelName(msg.ch)
+                    local sender = msg.s or ""
+                    local message = msg.m or ""
+
+                    local line
+                    if msg.o == 1 then
+                        -- 발신 귀속말
+                        line = string.format("%s[%s] 나→%s: %s",
+                            timeStr, channelName, msg.t or "", message)
+                    elseif msg.t then
+                        -- 수신 귀속말
+                        line = string.format("%s[%s] %s→나: %s",
+                            timeStr, channelName, sender, message)
+                    else
+                        -- 일반 메시지
+                        line = string.format("%s[%s] %s: %s",
+                            timeStr, channelName, sender, message)
+                    end
+
+                    -- 현재 선택된 메시지는 하이라이트
+                    if i == originalIndex then
+                        line = "|cFFFFFF00>>> " .. line .. " <<<|r"
+                    end
+
+                    table.insert(contextLines, line)
+                end
+
+                textAreaEditBox:SetText(table.concat(contextLines, "\n"))
+                contextPopup:Show()
+            end
+        end
+    end)
 
     -- 데이터 관련 변수들
     local currentDate = date("%Y%m%d")
-    local currentMessages = {}
     local scrollOffset = 0
 
     -- 채널 색상 정의
@@ -808,55 +921,55 @@ local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, Creat
         S = {1.0, 1.0, 1.0},     -- 일반 (흰색)
     }
 
-    -- 메시지 업데이트 함수
-    local function UpdateMessageDisplay()
-        local numMessages = #currentMessages
-        FauxScrollFrame_Update(messageFrame, numMessages, MAX_DISPLAY_LINES, MESSAGE_HEIGHT)
+    -- 메시지 업데이트 함수 정의
+    UpdateMessageDisplay = function()
+        local displayText = {}
 
-        scrollOffset = FauxScrollFrame_GetOffset(messageFrame)
+        for i, msg in ipairs(currentMessages) do
+            local timeStr = date("[%H:%M:%S]", msg.ts)
+            local channelName = Logger:GetChannelName(msg.ch)
+            local sender = msg.s or ""
+            local message = msg.m or ""
+            local target = msg.t or ""
 
-        for i = 1, MAX_DISPLAY_LINES do
-            local index = i + scrollOffset
-            local row = messageRows[i]
-
-            if index <= numMessages then
-                local msg = currentMessages[index]
-
-                -- 시간 표시
-                local timeStr = date("%H:%M", msg.ts)
-                row.timeText:SetText(timeStr)
-
-                -- 채널 표시 및 색상
-                local channelName = Logger:GetChannelName(msg.ch)
-                row.channelText:SetText(channelName)
-                local color = channelColors[msg.ch] or {1, 1, 1}
-                row.channelText:SetTextColor(color[1], color[2], color[3])
-
-                -- 발신자 표시
-                local senderStr = msg.s or ""
-                if msg.o == 1 then
-                    senderStr = "→" .. (msg.t or "")
-                elseif msg.t then
-                    senderStr = msg.s .. "→나"
-                end
-                row.senderText:SetText(senderStr)
-
-                -- 메시지 표시
-                row.msgText:SetText(msg.m or "")
-
-                -- 세션 구분선 처리
-                if msg.sessionStart then
-                    row.timeText:SetTextColor(1, 0.82, 0)
-                    row.timeText:SetText("--" .. timeStr .. "--")
-                else
-                    row.timeText:SetTextColor(0.6, 0.6, 0.6)
-                end
-
-                row:Show()
-            else
-                row:Hide()
+            -- 세션 구분
+            if msg.sessionStart then
+                table.insert(displayText, "\n|cFFFFFF00===== 새 세션 =====|r\n")
             end
+
+            local line
+            -- 채널 색상 적용
+            local channelColor
+            if msg.ch == "W" then
+                channelColor = "FFE59FF6"  -- 귓속말 (분홍)
+            elseif msg.ch == "P" then
+                channelColor = "FF99B3FF"  -- 파티 (파랑)
+            elseif msg.ch == "R" then
+                channelColor = "FFFF8000"  -- 공대 (주황)
+            elseif msg.ch == "G" then
+                channelColor = "FF40FF40"  -- 길드 (초록)
+            else
+                channelColor = "FFFFFFFF"  -- 기타 (흰색)
+            end
+
+            if msg.o == 1 then
+                -- 발신 귓속말
+                line = string.format("|cFF999999%s|r |c%s[%s]|r |cFFFFD700나→%s:|r %s",
+                    timeStr, channelColor, channelName, target, message)
+            elseif msg.t then
+                -- 수신 귓속말
+                line = string.format("|cFF999999%s|r |c%s[%s]|r |cFF87CEEB%s→나:|r %s",
+                    timeStr, channelColor, channelName, sender, message)
+            else
+                -- 일반 메시지
+                line = string.format("|cFF999999%s|r |c%s[%s]|r |cFFE0E0E0%s:|r %s",
+                    timeStr, channelColor, channelName, sender, message)
+            end
+
+            table.insert(displayText, line)
         end
+
+        messageEditBox:SetText(table.concat(displayText, "\n"))
     end
 
     -- 날짜별 메시지 로드 함수
@@ -867,11 +980,14 @@ local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, Creat
             string.sub(dateKey, 5, 6),
             string.sub(dateKey, 7, 8)))
 
-        currentMessages = Logger:GetMessagesForDate(dateKey) or {}
+        allMessages = Logger:GetMessagesForDate(dateKey) or {}
+        currentMessages = allMessages
+        isSearchActive = false
 
-        -- 세션 구분 처리
+        -- 세션 구분 처리 및 원본 인덱스 추가
         local lastTime = 0
         for i, msg in ipairs(currentMessages) do
+            msg.originalIndex = i  -- 원본 인덱스 저장
             if lastTime > 0 and (msg.ts - lastTime) > 1800 then
                 msg.sessionStart = true
             end
@@ -954,7 +1070,8 @@ local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, Creat
             edgeSize = 16,
             insets = {left = 4, right = 4, top = 4, bottom = 4}
         })
-        exportDialog:SetFrameStrata("DIALOG")
+        exportDialog:SetFrameStrata("FULLSCREEN_DIALOG")  -- 최상위 레이어로 변경
+        exportDialog:SetFrameLevel(1000)  -- 높은 프레임 레벨 설정
         exportDialog:EnableMouse(true)
         exportDialog:SetMovable(true)
         exportDialog:RegisterForDrag("LeftButton")
@@ -971,21 +1088,13 @@ local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, Creat
         desc:SetPoint("TOP", title, "BOTTOM", 0, -5)
         desc:SetText("Ctrl+A로 전체 선택, Ctrl+C로 복사")
 
-        -- 스크롤 프레임
-        local scrollFrame = CreateFrame("ScrollFrame", nil, exportDialog, "UIPanelScrollFrameTemplate")
-        scrollFrame:SetPoint("TOPLEFT", 10, -40)
-        scrollFrame:SetPoint("BOTTOMRIGHT", -30, 40)
+        -- CreateTextArea를 사용하여 텍스트 영역 생성
+        local textAreaBg, textAreaEditBox = CreateTextArea(exportDialog, 470, 320, 0)
+        textAreaBg:SetPoint("TOP", desc, "BOTTOM", 0, -10)
 
-        -- EditBox
-        local editBox = CreateFrame("EditBox", nil, scrollFrame)
-        editBox:SetMultiLine(true)
-        editBox:SetMaxLetters(999999)
-        editBox:SetSize(450, 300)
-        editBox:SetFont("Fonts\\FRIZQT__.TTF", 11)
-        editBox:SetText(table.concat(exportText, "\n"))
-        editBox:SetScript("OnEscapePressed", function() exportDialog:Hide() end)
-
-        scrollFrame:SetScrollChild(editBox)
+        -- 내용 설정 및 스타일 설정
+        textAreaEditBox:SetText(table.concat(exportText, "\n"))
+        textAreaEditBox:SetScript("OnEscapePressed", function() exportDialog:Hide() end)
 
         -- 닫기 버튼
         local closeButton = CreateFrame("Button", nil, exportDialog, "UIPanelButtonTemplate")
@@ -995,8 +1104,8 @@ local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, Creat
         closeButton:SetScript("OnClick", function() exportDialog:Hide() end)
 
         -- 포커스 설정
-        editBox:SetFocus()
-        editBox:HighlightText()
+        textAreaEditBox:SetFocus()
+        textAreaEditBox:HighlightText()
 
         exportDialog:Show()
     end
@@ -1006,13 +1115,13 @@ local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, Creat
     searchLabel:SetPoint("LEFT", 10, 0)
     searchLabel:SetText("검색:")
 
-    local searchBox = CreateFrame("EditBox", nil, searchPanel, "InputBoxTemplate")
+    searchBox = CreateFrame("EditBox", nil, searchPanel, "InputBoxTemplate")
     searchBox:SetSize(150, 20)
     searchBox:SetPoint("LEFT", searchLabel, "RIGHT", 10, 0)
     searchBox:SetAutoFocus(false)
 
     -- 채널 필터 드롭다운
-    local channelFilterDropdown = CreateFrame("Frame", "FoxChatLogChannelFilter", searchPanel, "UIDropDownMenuTemplate")
+    channelFilterDropdown = CreateFrame("Frame", "FoxChatLogChannelFilter", searchPanel, "UIDropDownMenuTemplate")
     channelFilterDropdown:SetPoint("LEFT", searchBox, "RIGHT", -10, -2)
     UIDropDownMenu_SetWidth(channelFilterDropdown, 70)
 
@@ -1026,12 +1135,11 @@ local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, Creat
     clearButton:SetPoint("LEFT", searchButton, "RIGHT", 5, 0)
     clearButton:SetText("초기화")
 
-    local searchResultLabel = searchPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    searchResultLabel = searchPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     searchResultLabel:SetPoint("LEFT", clearButton, "RIGHT", 10, 0)
     searchResultLabel:SetText("")
 
     -- 채널 필터 초기화
-    local selectedChannelFilter = "ALL"
     local function InitializeChannelFilter(self)
         local filterOptions = {
             {text = "전체", value = "ALL"},
@@ -1121,23 +1229,12 @@ local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, Creat
         searchKeyword = searchBox:GetText()
         if searchKeyword == "" and selectedChannelFilter == "ALL" then
             searchInProgress = false
-            currentMessages = Logger:GetMessagesForDate(currentDate) or {}
+            isSearchActive = false
+            currentMessages = allMessages
             searchResultLabel:SetText("")
-
-            -- 세션 구분 재처리
-            local lastTime = 0
-            for i, msg in ipairs(currentMessages) do
-                if lastTime > 0 and (msg.ts - lastTime) > 1800 then
-                    msg.sessionStart = true
-                else
-                    msg.sessionStart = nil
-                end
-                lastTime = msg.ts
-            end
 
             UpdateMessageDisplay()
         else
-            local allMessages = Logger:GetMessagesForDate(currentDate) or {}
             searchResultLabel:SetText("|cFFFFFF00검색중...|r")
             searchButton:SetEnabled(false)
 
@@ -1149,6 +1246,7 @@ local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, Creat
                 function(results)
                     -- 검색 완료
                     searchButton:SetEnabled(true)
+                    isSearchActive = true
                     currentMessages = results
                     searchResultLabel:SetText(string.format("검색결과: %d개", #results))
 
@@ -1176,6 +1274,7 @@ local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, Creat
             searchTimer = nil
         end
         searchInProgress = false
+        isSearchActive = false
 
         searchBox:SetText("")
         searchResultLabel:SetText("")
@@ -1183,18 +1282,7 @@ local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, Creat
         UIDropDownMenu_SetSelectedValue(channelFilterDropdown, "ALL")
         UIDropDownMenu_SetText(channelFilterDropdown, "전체")
 
-        currentMessages = Logger:GetMessagesForDate(currentDate) or {}
-
-        -- 세션 구분 재처리
-        local lastTime = 0
-        for i, msg in ipairs(currentMessages) do
-            if lastTime > 0 and (msg.ts - lastTime) > 1800 then
-                msg.sessionStart = true
-            else
-                msg.sessionStart = nil
-            end
-            lastTime = msg.ts
-        end
+        currentMessages = allMessages
 
         UpdateMessageDisplay()
     end
@@ -1216,7 +1304,8 @@ local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, Creat
                 edgeSize = 16,
                 insets = {left = 4, right = 4, top = 4, bottom = 4}
             })
-            datePicker:SetFrameStrata("DIALOG")
+            datePicker:SetFrameStrata("FULLSCREEN_DIALOG")
+            datePicker:SetFrameLevel(1000)
             datePicker:EnableMouse(true)
             datePicker:SetMovable(true)
             datePicker:RegisterForDrag("LeftButton")
@@ -1292,10 +1381,6 @@ local function CreateAutoTab(tab4, configFrame, FoxChatDB, CreateTextArea, Creat
         LoadMessagesForDate(currentDate)
     end)
 
-    -- 스크롤 이벤트
-    messageFrame:SetScript("OnVerticalScroll", function(self, offset)
-        FauxScrollFrame_OnVerticalScroll(self, offset, MESSAGE_HEIGHT, UpdateMessageDisplay)
-    end)
 
     -- 초기 로드
     LoadMessagesForDate(date("%Y%m%d"))
@@ -1459,12 +1544,11 @@ local defaults = {
 -- =============================================
 
 -- 구분선 생성 함수
-local function CreateSeparator(parent, point, relativeTo, relativePoint, x, y)
+local function CreateSeparator(parent)
     local line = parent:CreateTexture(nil, "ARTWORK")
     line:SetHeight(1)
     line:SetColorTexture(0.3, 0.3, 0.3, 0.6)
-    line:SetPoint(point, relativeTo, relativePoint, x, y)
-    line:SetPoint("RIGHT", parent, "RIGHT", -20, y)
+    -- SetPoint는 호출하는 쪽에서 설정하도록 변경
     return line
 end
 
@@ -1653,7 +1737,9 @@ function FoxChat:ShowConfig()
     end
 
     -- 탭 구분선
-    local tabSeparator = CreateSeparator(configFrame, "TOPLEFT", tabs[1], "BOTTOMLEFT", -20, -5)
+    local tabSeparator = CreateSeparator(configFrame)
+    tabSeparator:SetPoint("TOPLEFT", tabs[1], "BOTTOMLEFT", -20, -5)
+    tabSeparator:SetPoint("RIGHT", configFrame, "RIGHT", 20, 0)
 
     -- =============================================
     -- 탭 1: 채팅 필터링
@@ -1728,7 +1814,9 @@ function FoxChat:ShowConfig()
     end)
 
     -- 구분선
-    local separator1 = CreateSeparator(tab1, "TOPLEFT", filterEnabledCheckbox, "BOTTOMLEFT", -10, -15)
+    local separator1 = CreateSeparator(tab1)
+    separator1:SetPoint("TOPLEFT", filterEnabledCheckbox, "BOTTOMLEFT", -10, -15)
+    separator1:SetPoint("RIGHT", tab1, "RIGHT", -10, 0)
 
     -- 필터링 키워드 (왼쪽)
     local keywordsLabel = tab1:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -2070,7 +2158,9 @@ function FoxChat:ShowConfig()
     prefixSuffixHelp:SetText(L["PREFIX_SUFFIX_HELP"])
 
     -- 구분선
-    local separator2 = CreateSeparator(tab2, "TOPLEFT", prefixSuffixHelp, "BOTTOMLEFT", -10, -10)
+    local separator2 = CreateSeparator(tab2)
+    separator2:SetPoint("TOPLEFT", prefixSuffixHelp, "BOTTOMLEFT", -10, -10)
+    separator2:SetPoint("RIGHT", tab2, "RIGHT", -10, 0)
 
     -- 말머리 입력
     local prefixLabel = tab2:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -2404,7 +2494,9 @@ function FoxChat:ShowConfig()
     C_Timer.After(0.15, UpdateCharCount)
 
     -- 구분선
-    local separator3 = CreateSeparator(tab3, "TOPLEFT", adMessageBackground, "BOTTOMLEFT", -10, -15)
+    local separator3 = CreateSeparator(tab3)
+    separator3:SetPoint("TOPLEFT", adMessageBackground, "BOTTOMLEFT", -10, -15)
+    separator3:SetPoint("RIGHT", tab3, "RIGHT", -10, 0)
 
     -- 광고 버튼 위치 설정
     local adPosLabel = tab3:CreateFontString(nil, "OVERLAY", "GameFontNormal")

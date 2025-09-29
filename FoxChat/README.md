@@ -92,9 +92,13 @@ Enhanced UI with left-side menu and right-side content area:
 - **When I Join**: Sends random greeting when you join a party
   - Supports {me} variable for your character name
   - Multiple messages (one per line, randomly selected)
-- **When Others Join**: Sends greeting when others join your party
+- **When Others Join**: Sends greeting when others join your party/raid
   - Supports {name} variable for the joiner's name
   - Multiple messages with random selection
+- **Leader Exclusive Greetings** (NEW)
+  - **Party Leader**: All lines sent in order when you're party leader
+  - **Raid Leader**: All lines sent in order when you're raid leader
+  - Overrides normal greetings when you have leader role
 
 **Reply (응답)**
 - **Combat Auto-Reply**: Responds to whispers during combat (excludes party/raid members)
@@ -226,9 +230,13 @@ Enhanced UI with left-side menu and right-side content area:
 - **내가 참가할 때**: 파티 참가 시 랜덤 인사 메시지 전송
   - {me} 변수 지원 (내 캐릭터 이름)
   - 여러 메시지 설정 가능 (한 줄에 하나씩, 랜덤 선택)
-- **다른 사람이 참가할 때**: 다른 사람이 파티 참가 시 인사
+- **다른 사람이 참가할 때**: 다른 사람이 파티/공대 참가 시 인사
   - {name} 변수 지원 (참가자 이름)
   - 여러 메시지 랜덤 선택
+- **리더 전용 인사말** (신규)
+  - **파티장일 때**: 파티장인 경우 모든 줄을 순서대로 전송
+  - **공대장일 때**: 공대장인 경우 모든 줄을 순서대로 전송
+  - 리더 권한이 있을 때 일반 인사말보다 우선 적용
 
 **응답 (Reply)**
 - **전투 중 자동응답**: 전투 중 귓속말 자동응답 (파티/공대원 제외)
@@ -293,9 +301,16 @@ Enhanced UI with left-side menu and right-side content area:
 
 ## 버전
 
-- 현재 버전: 3.0
+- 현재 버전: 3.1
 - WoW 클래식 호환
-- 최신 업데이트:
+- 최신 업데이트 (3.1):
+  - 리더 전용 인사말 시스템 추가
+  - 공격대 지원 완벽 구현 (GetRaidRosterInfo 활용)
+  - 인사 메뉴 UI 2열 레이아웃 개선
+  - 광고 버튼 우클릭 시 설정창 열기 기능 추가
+  - 공대장 인사말 채널 수정 (RAID_WARNING → RAID)
+
+- 이전 업데이트 (3.0):
   - 자동 탭 UI를 좌측 메뉴 방식으로 완전 개편
   - 스마트 자동응답 시스템 추가 (파티/공대원 제외)
   - 주사위 자동 집계 기능 구현

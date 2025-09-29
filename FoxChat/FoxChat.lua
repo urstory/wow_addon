@@ -75,6 +75,9 @@ local defaults = {
         "{target}님 반갑습니다~",
         "어서오세요 {target}님!"
     },
+    -- 리더 전용 인사말 (여러 줄 전체 출력)
+    leaderGreetRaidMessages = "",  -- 내가 공대장일 때 인사말
+    leaderGreetPartyMessages = "",  -- 내가 파티장일 때 인사말
     -- AFK/DND/전투/인던 자동응답
     autoReplyAFK = false,  -- AFK/DND 시 자동응답
     autoReplyCombat = false,  -- 전투 중 자동응답
@@ -1073,7 +1076,7 @@ local function CreateAdButton()
         GameTooltip:AddLine(" ", 1, 1, 1)
         GameTooltip:AddLine("쿨다운: " .. cooldownTime .. "초", 0.7, 0.7, 0.7)
         GameTooltip:AddLine(" ", 1, 1, 1)
-        GameTooltip:AddLine("|cFFFF6060우클릭: 광고 중지|r", 1, 1, 1)
+        GameTooltip:AddLine("|cFFFF6060우클릭: 설정창 열기|r", 1, 1, 1)
         GameTooltip:Show()
     end)
 
@@ -1083,23 +1086,17 @@ local function CreateAdButton()
 
     -- 클릭 이벤트
     adButton:SetScript("OnClick", function(self, button)
-        -- 우클릭 처리 - 광고 중지
+        -- 우클릭 처리 - 설정창 열기 (광고 설정 탭)
         if button == "RightButton" then
-            FoxChatDB.adEnabled = false
-            self:Hide()  -- 버튼 숨김
-            -- 쿨다운 초기화
-            if FoxChat and FoxChat.ResetAdCooldown then
-                FoxChat:ResetAdCooldown()
-            end
-            -- 설정창의 버튼도 업데이트
-            local configFrame = _G["FoxChatConfigFrame"]
-            if configFrame and configFrame:IsVisible() then
-                -- 탭 컨텐츠 찾기
-                if configFrame.tab3 and configFrame.tab3.UpdateAdStartButton then
-                    configFrame.tab3.UpdateAdStartButton()
+            -- 설정창 열기
+            if FoxChat and FoxChat.ShowConfig then
+                FoxChat:ShowConfig()
+                -- 광고 설정 탭으로 전환
+                local configFrame = _G["FoxChatConfigFrame"]
+                if configFrame and configFrame.SelectTab then
+                    configFrame:SelectTab(3)  -- 3번 탭 = 광고 설정
                 end
             end
-            print("|cFFFF7D0A[FoxChat]|r 광고가 중지되었습니다.")
             return
         end
 
@@ -1691,6 +1688,14 @@ frame:SetScript("OnEvent", function(self, event, arg1)
             FoxChatDB.minimapButton = defaults.minimapButton
         end
 
+        -- 리더 전용 인사말 필드 초기화 (기존 DB에 없을 경우)
+        if FoxChatDB.leaderGreetRaidMessages == nil then
+            FoxChatDB.leaderGreetRaidMessages = defaults.leaderGreetRaidMessages
+        end
+        if FoxChatDB.leaderGreetPartyMessages == nil then
+            FoxChatDB.leaderGreetPartyMessages = defaults.leaderGreetPartyMessages
+        end
+
         -- toastPosition 테이블 확인 및 초기화
         if not FoxChatDB.toastPosition then
             FoxChatDB.toastPosition = defaults.toastPosition
@@ -2240,6 +2245,64 @@ end
 local partyGreetCooldown = {}  -- 중복 인사 방지용 쿨다운
 local hasGreetedMyJoin = false  -- 내가 이미 인사했는지
 
+-- 이름 정규화(서버명 제거)
+local function GetPlainName(unitOrName)
+    local name = unitOrName
+    if UnitExists(unitOrName) then
+        name = UnitName(unitOrName)
+    end
+    if Ambiguate then
+        name = Ambiguate(name, "none")
+    end
+    -- 서버명 제거
+    if name then
+        name = string.gsub(name, "%-.*$", "")
+    end
+    return name
+end
+
+-- GetRaidRosterInfo를 사용한 확실한 공대장/부공대장 체크
+local function GetMyRaidRole()
+    if not IsInRaid() then return false, false end
+
+    local myName = GetPlainName("player")
+    local numMembers = GetNumGroupMembers()
+
+    if debugMode then
+        print(string.format("|cFF00FFFF[FoxChat Debug] 공대 권한 체크 시작: 내 이름=%s, 공대원 수=%d|r",
+            myName or "nil", numMembers))
+    end
+
+    for i = 1, numMembers do
+        local name, rank = GetRaidRosterInfo(i)
+        local plainName = name and GetPlainName(name)
+
+        if debugMode and i <= 5 then  -- 처음 5명만 디버그 출력
+            print(string.format("|cFF00FFFF[FoxChat Debug] 멤버[%d]: %s (rank=%s)|r",
+                i, plainName or "nil", tostring(rank)))
+        end
+
+        if plainName == myName then
+            -- rank: 2=공대장, 1=부공대장, 0=일반
+            local isLeader = (rank == 2)
+            local isAssistant = (rank == 1)
+
+            if debugMode then
+                print(string.format("|cFF00FF00[FoxChat Debug] 내 권한 찾음! rank=%d, 공대장=%s, 부공대장=%s|r",
+                    rank, tostring(isLeader), tostring(isAssistant)))
+            end
+
+            return isLeader, isAssistant
+        end
+    end
+
+    if debugMode then
+        print("|cFFFF0000[FoxChat Debug] 내 권한을 찾지 못함|r")
+    end
+
+    return false, false
+end
+
 -- 내가 파티에 참가할 때 인사
 local function SendMyJoinGreeting()
     if not FoxChatDB or not FoxChatDB.autoGreetOnMyJoin then return end
@@ -2283,11 +2346,64 @@ end
 -- 다른 사람이 파티에 참가할 때 인사
 local function SendOthersJoinGreeting(targetName)
     if not FoxChatDB or not FoxChatDB.autoGreetOnOthersJoin then return end
-    if not FoxChatDB.othersJoinMessages or FoxChatDB.othersJoinMessages == "" then return end
     if not targetName or targetName == "" then return end
 
-    -- 줄바꿈으로 구분된 문자열을 테이블로 변환
-    local messages = {strsplit("\n", FoxChatDB.othersJoinMessages)}
+    -- 리더 체크 (개선된 방식)
+    local isRaidLeader, isRaidAssistant = false, false
+    local isPartyLeader = false
+
+    if IsInRaid() then
+        -- GetRaidRosterInfo를 사용한 확실한 공대장 체크
+        isRaidLeader, isRaidAssistant = GetMyRaidRole()
+    elseif IsInGroup() then
+        -- 파티장 체크
+        isPartyLeader = UnitIsGroupLeader and UnitIsGroupLeader("player")
+    end
+
+    -- 디버그 출력 (테스트용)
+    if debugMode then
+        print(string.format("|cFF00FF00[FoxChat Debug] 인사 체크: 대상=%s, 공대장=%s, 부공대장=%s, 파티장=%s|r",
+            targetName or "nil",
+            tostring(isRaidLeader),
+            tostring(isRaidAssistant),
+            tostring(isPartyLeader)))
+    end
+
+    local messages = {}
+    local sendAllLines = false  -- 전체 발송 여부
+    local channel = "PARTY"  -- 기본 채널
+
+    -- 리더 전용 인사말 체크
+    if isRaidLeader and FoxChatDB.leaderGreetRaidMessages and FoxChatDB.leaderGreetRaidMessages ~= "" then
+        -- 공대장 전용 인사말 사용
+        messages = {strsplit("\n", FoxChatDB.leaderGreetRaidMessages)}
+        sendAllLines = true
+        -- 공대장도 일반 RAID 채널 사용 (/공)
+        channel = "RAID"
+        if debugMode then
+            print("|cFFFF00FF[FoxChat Debug] 공대장 인사말 사용, 채널: " .. channel .. "|r")
+        end
+    elseif isPartyLeader and FoxChatDB.leaderGreetPartyMessages and FoxChatDB.leaderGreetPartyMessages ~= "" then
+        -- 파티장 전용 인사말 사용
+        messages = {strsplit("\n", FoxChatDB.leaderGreetPartyMessages)}
+        sendAllLines = true
+        channel = "PARTY"
+        if debugMode then
+            print("|cFFFF00FF[FoxChat Debug] 파티장 인사말 사용, 채널: " .. channel .. "|r")
+        end
+    else
+        -- 기존 로직: 일반 인사말 사용 (랜덤)
+        if not FoxChatDB.othersJoinMessages or FoxChatDB.othersJoinMessages == "" then return end
+        messages = {strsplit("\n", FoxChatDB.othersJoinMessages)}
+        sendAllLines = false
+
+        -- 공격대/파티 구분하여 채널 설정
+        if IsInRaid() then
+            channel = "RAID"
+        else
+            channel = "PARTY"
+        end
+    end
 
     -- 유효한 메시지만 필터링 (공백 제거)
     local validMessages = {}
@@ -2309,17 +2425,32 @@ local function SendOthersJoinGreeting(targetName)
         partyGreetCooldown[targetName] = now
     end
 
-    -- 랜덤 메시지 선택
-    local message = validMessages[math.random(#validMessages)]
+    -- 메시지 발송
+    if sendAllLines then
+        -- 모든 줄 순차적으로 발송 (리더 전용)
+        for i, msg in ipairs(validMessages) do
+            -- {name} 치환
+            local finalMsg = string.gsub(msg, "{name}", targetName)
+            finalMsg = string.gsub(finalMsg, "{target}", targetName)  -- 이전 호환성
 
-    -- 변수 치환 - {name}을 참가자 이름으로 치환
-    message = string.gsub(message, "{name}", targetName)
-    message = string.gsub(message, "{target}", targetName)  -- 이전 호환성
+            -- 딜레이를 두고 순차 발송 (스팸 방지)
+            C_Timer.After(1.5 + (i - 1) * 0.5, function()
+                SendChatMessage(finalMsg, channel)
+            end)
+        end
+    else
+        -- 기존 로직: 랜덤 선택
+        local message = validMessages[math.random(#validMessages)]
 
-    -- 파티 채팅으로 전송 (약간의 딜레이)
-    C_Timer.After(1.5, function()
-        SendChatMessage(message, "PARTY")
-    end)
+        -- 변수 치환
+        message = string.gsub(message, "{name}", targetName)
+        message = string.gsub(message, "{target}", targetName)  -- 이전 호환성
+
+        -- 파티 채팅으로 전송 (약간의 딜레이)
+        C_Timer.After(1.5, function()
+            SendChatMessage(message, channel)
+        end)
+    end
 end
 
 -- 자동 수리 알림
@@ -2722,10 +2853,10 @@ autoEventFrame:SetScript("OnEvent", function(self, event, ...)
         end)
 
     elseif event == "GROUP_ROSTER_UPDATE" then
-        -- 파티 멤버 변경 감지
+        -- 그룹 멤버 변경 감지
         local currentSize = GetNumGroupMembers()
 
-        if IsInGroup() and not IsInRaid() then
+        if IsInGroup() then  -- 파티나 공격대 모두 처리
             if lastGroupSize == 0 and currentSize > 0 then
                 -- 내가 파티에 참가함 (초대받아서 들어간 경우만)
                 if wasInvited then
@@ -2733,14 +2864,25 @@ autoEventFrame:SetScript("OnEvent", function(self, event, ...)
                     wasInvited = false  -- 플래그 리셋
                 end
 
-                -- 현재 파티 멤버 목록 초기화
+                -- 현재 그룹 멤버 목록 초기화
                 wipe(partyMembers)
-                for i = 1, currentSize - 1 do
-                    local unit = "party" .. i
-                    if UnitExists(unit) then
-                        local name = UnitName(unit)
-                        if name and name ~= "" then
+                if IsInRaid() then
+                    -- 공격대 멤버 초기화
+                    for i = 1, currentSize do
+                        local name = GetRaidRosterInfo(i)
+                        if name and name ~= "" and name ~= UnitName("player") then
                             partyMembers[name] = true
+                        end
+                    end
+                else
+                    -- 파티 멤버 초기화
+                    for i = 1, currentSize - 1 do
+                        local unit = "party" .. i
+                        if UnitExists(unit) then
+                            local name = UnitName(unit)
+                            if name and name ~= "" then
+                                partyMembers[name] = true
+                            end
                         end
                     end
                 end
@@ -2748,18 +2890,30 @@ autoEventFrame:SetScript("OnEvent", function(self, event, ...)
                 -- 다른 사람이 파티에 참가함
                 -- 약간의 딜레이 후 새 멤버 찾기 (파티 정보 업데이트 대기)
                 C_Timer.After(0.5, function()
-                    if IsInGroup() and not IsInRaid() then
+                    if IsInGroup() then
                         local newMembers = {}
 
-                        -- 현재 파티 멤버 확인
-                        for i = 1, GetNumGroupMembers() - 1 do
-                            local unit = "party" .. i
-                            if UnitExists(unit) then
-                                local name = UnitName(unit)
-                                if name and name ~= "" and not partyMembers[name] then
+                        if IsInRaid() then
+                            -- 공격대 새 멤버 확인
+                            for i = 1, GetNumGroupMembers() do
+                                local name = GetRaidRosterInfo(i)
+                                if name and name ~= "" and name ~= UnitName("player") and not partyMembers[name] then
                                     -- 새 멤버 발견
                                     table.insert(newMembers, name)
                                     partyMembers[name] = true
+                                end
+                            end
+                        else
+                            -- 파티 새 멤버 확인
+                            for i = 1, GetNumGroupMembers() - 1 do
+                                local unit = "party" .. i
+                                if UnitExists(unit) then
+                                    local name = UnitName(unit)
+                                    if name and name ~= "" and not partyMembers[name] then
+                                        -- 새 멤버 발견
+                                        table.insert(newMembers, name)
+                                        partyMembers[name] = true
+                                    end
                                 end
                             end
                         end
@@ -2771,14 +2925,25 @@ autoEventFrame:SetScript("OnEvent", function(self, event, ...)
                     end
                 end)
             elseif currentSize < lastGroupSize then
-                -- 누군가 파티를 떠남 - 멤버 목록 업데이트
+                -- 누군가 그룹을 떠남 - 멤버 목록 업데이트
                 local currentMembers = {}
-                for i = 1, currentSize - 1 do
-                    local unit = "party" .. i
-                    if UnitExists(unit) then
-                        local name = UnitName(unit)
-                        if name and name ~= "" then
+                if IsInRaid() then
+                    -- 공격대 멤버 업데이트
+                    for i = 1, currentSize do
+                        local name = GetRaidRosterInfo(i)
+                        if name and name ~= "" and name ~= UnitName("player") then
                             currentMembers[name] = true
+                        end
+                    end
+                else
+                    -- 파티 멤버 업데이트
+                    for i = 1, currentSize - 1 do
+                        local unit = "party" .. i
+                        if UnitExists(unit) then
+                            local name = UnitName(unit)
+                            if name and name ~= "" then
+                                currentMembers[name] = true
+                            end
                         end
                     end
                 end
