@@ -1,0 +1,59 @@
+## Interface: 11503
+## Title: FoxChat (New Structure)
+## Author: 우르사 (20주년 하드코어 클래식 서버, Fox and Wolf 길드)
+## Version: 3.0
+## Notes: Chat enhancement addon with keyword highlighting and message customization (Modular)
+## Notes-koKR: 키워드 강조 및 메시지 커스터마이징 채팅 향상 애드온 (모듈화 버전)
+## SavedVariables: FoxChatDB
+## SavedVariablesPerCharacter: FoxChatCharDB
+
+# 로컬라이제이션
+Localization.lua
+
+# 코어 모듈
+Core\FoxChat_Events.lua
+Core\FoxChat_Core.lua
+Core\FoxChat_ChatHook.lua
+
+# 유틸리티
+Utils\FoxChat_UTF8.lua
+Utils\FoxChat_Common.lua
+
+# 기능 모듈
+Features\FoxChat_KeywordFilter.lua
+Features\FoxChat_PrefixSuffix.lua
+Features\FoxChat_Advertisement.lua
+Features\FoxChat_AutoTrade.lua
+Features\FoxChat_AutoGreeting.lua
+Features\FoxChat_AutoReply.lua
+Features\FoxChat_FirstCome.lua
+
+# UI 컴포넌트
+UI\FoxChat_Toast.lua
+UI\FoxChat_MinimapButton.lua
+UI\FoxChat_AdButton.lua
+UI\FoxChat_FirstComeButton.lua
+
+# UI 설정 시스템
+UI\Config\FoxChat_UIComponents.lua
+UI\Config\FoxChat_ConfigTabSystem.lua
+UI\Config\FoxChat_ConfigMain.lua
+
+# UI 설정 탭들
+UI\Config\Tabs\FoxChat_Tab_Basic.lua
+# UI\Config\Tabs\FoxChat_Tab_Highlight.lua (추후 추가)
+# UI\Config\Tabs\FoxChat_Tab_Advertisement.lua (추후 추가)
+# UI\Config\Tabs\FoxChat_Tab_Auto.lua (추후 추가)
+# UI\Config\Tabs\FoxChat_Tab_FirstCome.lua (추후 추가)
+# UI\Config\Tabs\FoxChat_Tab_Greeting.lua (추후 추가)
+
+# 기존 모듈들 (호환성 유지)
+FoxChat_Settings.lua
+FoxChat_Debug.lua
+
+# 로거 및 추가 기능 (기존 파일)
+FoxChatLogger.lua
+FoxChatRollTracker.lua
+
+# 메인 초기화 (맨 마지막에 로드)
+Core\FoxChat_Init.lua
