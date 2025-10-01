@@ -533,7 +533,7 @@ function addon:StartSync(isManual)
 
         -- 동기화 요청 전송
         broadcastSyncRequest()
-        addon:Print("동기화 요청을 전송했습니다...")
+        -- addon:Print("동기화 요청을 전송했습니다...") -- 디버그용 주석 처리
 
         -- 수동 동기화도 증분 동기화 방식 사용
         C_Timer.After(3, function()
@@ -541,7 +541,7 @@ function addon:StartSync(isManual)
             if #recentPlayers > 0 then
                 addon:PerformIncrementalSync(recentPlayers)
             else
-                addon:Print("동기화할 다른 플레이어가 없습니다.")
+                -- addon:Print("동기화할 다른 플레이어가 없습니다.") -- 디버그용 주석 처리
             end
         end)
         return
@@ -557,7 +557,7 @@ function addon:StartSync(isManual)
 
     -- 1단계: 접속 알림 브로드캐스트
     broadcastLogin()
-    addon:Print("접속 알림을 전송했습니다.")
+    -- addon:Print("접속 알림을 전송했습니다.") -- 디버그용 주석 처리
 
     -- 5초 후 20분 이내 접속자 확인
     C_Timer.After(5, function()
@@ -575,7 +575,7 @@ function addon:StartSync(isManual)
                 recentPlayers = getRecentLoginPlayers(MAX_SYNC_TARGETS, LOGIN_REPLY_TIME_PHASE2)
 
                 if #recentPlayers == 0 then
-                    addon:Print("동기화할 다른 플레이어가 없습니다. 새 캘린더로 시작합니다.")
+                    -- addon:Print("동기화할 다른 플레이어가 없습니다. 새 캘린더로 시작합니다.") -- 디버그용 주석 처리
                     syncState.started = true
                     syncState.finished = true
                 else
@@ -587,7 +587,7 @@ function addon:StartSync(isManual)
             end)
         else
             -- 30초 후 동기화 요청 예약
-            addon:Print(string.format("%d명의 최근 접속자를 발견했습니다. 30초 후 동기화...", #recentPlayers))
+            -- addon:Print(string.format("%d명의 최근 접속자를 발견했습니다. 30초 후 동기화...", #recentPlayers)) -- 디버그용 주석 처리
             C_Timer.After(SYNC_REQUEST_DELAY, function()
                 addon:PerformIncrementalSync(recentPlayers)
             end)
@@ -613,10 +613,10 @@ function addon:PerformIncrementalSync(targets)
         for i = 1, reducedCount do
             adjustedTargets[i] = targets[i]
         end
-        addon:Print(string.format("네트워크 지연으로 동기화 대상을 %d명으로 조정", reducedCount))
+        -- addon:Print(string.format("네트워크 지연으로 동기화 대상을 %d명으로 조정", reducedCount)) -- 디버그용 주석 처리
     end
 
-    addon:Print(string.format("최근 %d명에게 오늘 이후 일정 요청 중...", #adjustedTargets))
+    -- addon:Print(string.format("최근 %d명에게 오늘 이후 일정 요청 중...", #adjustedTargets)) -- 디버그용 주석 처리
 
     -- 동기화 히스토리 기록
     addSyncHistory("증분 동기화 시작", #adjustedTargets)
@@ -648,7 +648,7 @@ function addon:PerformIncrementalSync(targets)
 
             C_Timer.After(delay, checkResponse)
         elseif not syncState.receivedResponse then
-            addon:Print("동기화 응답이 없습니다.")
+            -- addon:Print("동기화 응답이 없습니다.") -- 디버그용 주석 처리
             networkMetrics.failedSyncs = networkMetrics.failedSyncs + 1
             addSyncHistory("동기화 실패 - 응답 없음", 0)
             syncState.started = true
@@ -678,7 +678,7 @@ local function markSyncComplete(isFromSync)
     end
 
     if isFromSync then
-        addon:Print("길드 캘린더 동기화가 완료되었습니다.")
+        -- addon:Print("길드 캘린더 동기화가 완료되었습니다.") -- 디버그용 주석 처리
     end
 
     if not syncState.finished then
@@ -759,11 +759,11 @@ frame:SetScript("OnEvent", function(self, event, prefix, message, channel, sende
     elseif msg.type == "SYNCSTART" then
         -- 동기화 시작 알림
         if syncState.manualSyncTimer then
-            addon:Print(string.format("%s님으로부터 동기화 시작 (%d개 이벤트)", sender, msg.count or 0))
+            -- addon:Print(string.format("%s님으로부터 동기화 시작 (%d개 이벤트)", sender, msg.count or 0)) -- 디버그용 주석 처리
         end
         -- 자동 동기화 시에는 메시지 표시 안함
         if not syncState.started then
-            addon:Print(string.format("%s님으로부터 동기화 중...", sender))
+            -- addon:Print(string.format("%s님으로부터 동기화 중...", sender)) -- 디버그용 주석 처리
         end
         markSyncComplete(false)
 

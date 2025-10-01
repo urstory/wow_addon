@@ -892,9 +892,1548 @@ function UTF8.validate(str)
     }
 end
 
+-- 마부재료 팝업창 생성 함수
+local function ShowMabuPopup()
+    -- 기존 팝업이 있으면 제거
+    if MabuPopupFrame then
+        MabuPopupFrame:Hide()
+        MabuPopupFrame = nil
+    end
+
+    -- 메인 프레임 생성 (BackdropTemplate 상속)
+    local frame = CreateFrame("Frame", "MabuPopupFrame", UIParent, "BackdropTemplate")
+    frame:SetWidth(600)
+    frame:SetHeight(400)
+    frame:SetPoint("CENTER", 0, 0)
+    frame:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 32,
+        insets = { left = 11, right = 12, top = 12, bottom = 11 }
+    })
+    frame:SetBackdropColor(0, 0, 0, 0.9)
+    frame:EnableMouse(true)
+    frame:SetMovable(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    frame:SetFrameStrata("DIALOG")
+
+    -- 제목
+    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOP", frame, "TOP", 0, -15)
+    title:SetText("|cFFFFD700마법 부여 재료 목록|r")
+
+    -- 닫기 버튼
+    local closeButton = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+    closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
+
+    -- 스크롤 프레임 생성
+    local scrollFrame = CreateFrame("ScrollFrame", "MabuScrollFrame", frame, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 20, -45)
+    scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -40, 20)
+
+    -- EditBox 생성
+    local editBox = CreateFrame("EditBox", nil, scrollFrame)
+    editBox:SetMultiLine(true)
+    editBox:SetFontObject(GameFontNormal)
+    editBox:SetWidth(540)
+    editBox:SetAutoFocus(false)
+    editBox:SetScript("OnEscapePressed", function(self) frame:Hide() end)
+    scrollFrame:SetScrollChild(editBox)
+
+    -- 마부재료.txt 내용 로드
+    local mabuContent = [[가슴
+가슴 - 최상급 생명력: 환상가루 6
+가슴 - 일급 생명력: 눈부신 작은 결정 1, 환영가루 6
+가슴 - 최상급 마나: 상급 황천의 정수 1, 하급 황천의 정수 2
+가슴 - 일급 마나: 눈부신 작은 결정 1, 상급 영원의 정수 3
+가슴 - 능력치(+3): 찬란하게 빛나는 큰결정 1, 상급 황천의 정수 2, 꿈가루 3
+가슴 - 상급 능력치(+4): 눈부신 큰결정 4, 상급 영원의 정수 10, 환영가루 15
+
+손목
+손목 - 체력: 환상가루 5
+손목 - 상급 체력: 꿈가루 5
+손목 - 최상급 체력: 환영가루 15
+손목 - 지능: 하급 황천의 정수 2
+손목 - 상급 지능: 하급 영원의 정수 3
+손목 - 최상급 정신력: 하급 영원의 정수 3, 꿈가루 10
+손목 - 회피: 상급 황천의 정수 1, 꿈가루 2
+손목 - 치유 강화: 눈부신 큰결정 2, 상급 영원의 정수 4, 환영가루 20, 생명의 정수 6
+손목 - 힘: 환상가루 1
+손목 - 상급 힘: 상급 황천의 정수 1, 꿈가루 2
+손목 - 최상급 힘: 상급 영원의 정수 6, 환영가루 6
+
+망토
+망토 - 최상급 보호: 환영가루 8
+망토 - 상급 저항력(모든저항+5): 하급 영원의 정수 2, 물의 보주 1, 불의 심장 1, 대지의 핵 1, 불사의 영액 1, 바람의 숨결 1
+망토 - 화염 저항력: 하급 신비의 정수 1, 불의 원소 1
+망토 - 하급 민첩성(+3): 하급 황천의 정수 2
+
+장갑
+장갑 - 힘(+5): 하급 황천의 정수 2, 환상가루 3
+장갑 - 상급 힘(+7): 상급 영원의 정수 4, 환영가루 4
+장갑 - 민첩(+5): 상급 황천의 정수 2
+장갑 - 상급 민첩(+7): 하급 영원의 정수 3, 환영가루 3
+장갑 - 숙련된 조련술: 찬란하게 빛나는 큰결정 2, 꿈가루 3
+장갑 - 최하급 신속(공속 1%): 찬란하게 빛나는 큰결정 2, 야생덩굴 2
+
+장화
+장화 - 체력(+5): 환상가루 5
+장화 - 상급 체력(+7): 꿈가루 10
+장화 - 민첩(+5): 상급 황천의 정수 2
+장화 - 상급 민첩(+7): 상급 영원의 정수 8
+장화 - 최하급 속도(이속): 찬란하게 빛나는 작은 결정 1, 하급 황천의 정수 1, 남옥 1
+
+방패
+방패 - 체력(+5): 환상가루 5
+방패 - 상급 체력(+7): 꿈가루 10
+방패 - 최상급 정신력(+9): 상급 영원의 정수 2, 환영가루 4
+방패 - 하급 방어(방어확률 2%): 상급 신비의 정수 2, 환상가루 2, 붉게 빛나는 큰결정 1
+
+양손 무기
+양손 - 일급 정신력(+9): 상급 영원의 정수 12, 눈부신 큰결정 2
+양손 - 충격(+5): 환상가루 4, 붉게 빛나는 큰결정 1
+양손 - 상급 충격(+7): 찬란하게 빛나는 큰결정 2, 꿈가루 2
+양손 - 최상급 충격(+9): 눈부신 큰결정 4, 환영가루 10
+양손 - 일급 지능(+9): 눈부신 큰결정 2, 상급 영원의 정수 12
+
+무기 (1손/양손 공통 마부 다수 포함)
+무기 - 뛰어난 지능(+22): 눈부신 큰결정 15, 상급 영원의 정수 12, 환영가루 20
+무기 - 성전사: 눈부신 큰결정 4, 정의의 보주 2
+무기 - 공격력(+3): 상급 신비의 정수 2, 붉게 빛나는 큰결정 1
+무기 - 상급 공격력(+4): 찬란하게 빛나는 큰결정 2, 상급 황천의 정수 2
+무기 - 최상급 공격력(+5): 눈부신 큰결정 2, 상급 영원의 정수 10
+무기 - 민첩(+15): 눈부신 큰결정 6, 상급 영원의 정수 6, 환영가루 4, 바람의 정수 2
+무기 - 힘(+15): 눈부신 큰결정 6, 상급 영원의 정수 6, 환영가루 5, 대지의 정수 2
+무기 - 강한 정신력(+20): 눈부신 큰결정 10, 상급 영원의 정수 8, 환영가루 15
+무기 - 생명력 흡수: 눈부신 큰결정 6, 불사의 정수 6
+무기 - 불타는 무기: 찬란하게 빛나는 작은 결정 4, 불의 정수 1
+무기 - 부정의 무기: 눈부신 큰결정 4, 불사의 정수 4
+무기 - 빙결: 눈부신 작은 결정 4, 물의 정수 1, 바람의 정수 1, 얼음송이 1
+무기 - 악마 사냥: 악마사냥전문화의 비약 1, 꿈가루 2, 찬란하게 빛나는 작은 결정 2
+무기 - 야수 사냥: 붉게 빛나는 작은결정 1, 하급 신비의 정수 1, 큰 송곳니 1
+무기 - 정령 사냥: 붉게 빛나는 작은결정 1, 하급 신비의 정수 1, 대지의 원소 1
+무기 - 한겨울 추위: 상급 신비의 정수 3, 환상가루 3, 붉게 빛나는 큰결정 1, 겨울서리풀 2
+무기 - 치유 강화(+55): 눈부신 큰결정 4, 상급 영원의 정수 8, 생명의 정수 6, 물의 정수 6, 정의의 보주 1
+무기 - 주문 강화(+30): 눈부신 큰결정 4, 상급 영원의 정수 12, 물의 정수 4, 불의 정수 4, 바람의 정수 4, 황금 진주 2
+
+머리/다리 (고서/성서, 직업 마부 아님)
+머리/다리 - 숙고의 고서(마나+150): 숙고의고서 1, 검은다이아몬드 1, 모래주머니껌 1, 고통받은자의검은피 1, 30골드
+머리/다리 - 골격의 고서(생명력+100): 골격의고서 1, 검은다이아몬드 1, 허파즙칵테일 1, 어둠용의숨결 4, 30골드
+머리/다리 - 불굴의 고서(방어도+125): 불굴의고서 1, 검은다이아몬드 1, 카잘의눈 1, 수호의수정 4, 30골드
+머리/다리 - 탄력의 고서(화저+20): 탄력의고서 1, 검은다이아몬드 1, 불타는정수 1, 돌기의수정 4, 30골드
+머리/다리 - 탐욕의 고서(원하는 능력치+8): 탐욕의고서 1, 검은다이아몬드 1, 채찍뿌리줄기 4, 정신력의수정 4, 30골드
+머리/다리 - 집중의 성서(주문효과+8): 집중의성서 1, 온전한검은다이아몬드 1, 눈큰 4, 어둠의허물 2
+머리/다리 - 보호의 성서(회피+1%): 보호의성서 1, 온전한검은다이아몬드 1, 눈큰 2, 닳아해진누더기골렘조각 1
+머리/다리 - 신속의 성서(공속+1%): 신속의성서 1, 온전한검은다이아몬드 1, 눈큰 2, 영웅의피 2
+
+어깨 (여명회 장막)
+여명비전장막(비전저항+5): 은빛여명회휘장 10, 9골드 *(매우 우호)*
+여명화염장막(화염저항+5): 은빛여명회휘장 10, 9골드 *(매우 우호)*
+여명냉기장막(냉기저항+5): 은빛여명회휘장 10, 9골드 *(매우 우호)*
+여명암흑장막(암흑저항+5): 은빛여명회휘장 10, 9골드 *(매우 우호)*
+여명오색장막(모든저항+5): 은빛여명회휘장 25, 36골드 *(확고한 동맹)*]]
+
+    editBox:SetText(mabuContent)
+    editBox:SetCursorPosition(0)
+
+    -- 팝업 표시
+    frame:Show()
+    MabuPopupFrame = frame
+
+    -- ESC 키로 닫기 위해 UISpecialFrames에 추가
+    tinsert(UISpecialFrames, "MabuPopupFrame")
+end
+
+-- 자물쇠 팝업창 생성 함수
+local function ShowLockPopup()
+    -- 기존 팝업이 있으면 제거
+    if LockPopupFrame then
+        LockPopupFrame:Hide()
+        LockPopupFrame = nil
+    end
+
+    -- 메인 프레임 생성 (BackdropTemplate 상속)
+    local frame = CreateFrame("Frame", "LockPopupFrame", UIParent, "BackdropTemplate")
+    frame:SetWidth(600)
+    frame:SetHeight(400)
+    frame:SetPoint("CENTER", 0, 0)
+    frame:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 32,
+        insets = { left = 11, right = 12, top = 12, bottom = 11 }
+    })
+    frame:SetBackdropColor(0, 0, 0, 0.9)
+    frame:EnableMouse(true)
+    frame:SetMovable(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    frame:SetFrameStrata("DIALOG")
+
+    -- 제목
+    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOP", frame, "TOP", 0, -15)
+    title:SetText("|cFFFFD700도적 자물쇠 숙련 가이드|r")
+
+    -- 닫기 버튼
+    local closeButton = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+    closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
+
+    -- 스크롤 프레임 생성
+    local scrollFrame = CreateFrame("ScrollFrame", "LockScrollFrame", frame, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 20, -45)
+    scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -40, 20)
+
+    -- EditBox 생성
+    local editBox = CreateFrame("EditBox", nil, scrollFrame)
+    editBox:SetMultiLine(true)
+    editBox:SetFontObject(GameFontNormal)
+    editBox:SetWidth(540)
+    editBox:SetAutoFocus(false)
+    editBox:SetScript("OnEscapePressed", function(self) frame:Hide() end)
+    scrollFrame:SetScrollChild(editBox)
+
+    -- 자물쇠.txt 내용 로드
+    local lockContent = [[도적 자물쇠 숙련 올리기 (WoW 클래식 1–300)
+
+[준비물] 물갈퀴/수중 호흡 물약(수중 상자 구간), 은신/기절/군중제어, 자물쇠 상자(소형~중형) 추가로 주운 것들은 틈틈이 따서 보정.
+
+숙련 1–75
+
+* 공통: 각 진영 도적 자물쇠 퀘스트 지역의 연습 상자에서 1→75(최대 100까지도 가능).
+* 얼라이언스: 붉은마루 산맥 알더스 제재소(Alther's Mill) 연습 상자.
+* 호드: 불모의 땅 상인 해안 남쪽 해적선 내부(라쳇 남쪽) 상자.
+
+숙련 76–120
+
+* 얼라이언스: 붉은마루 산맥 영원의 호수(Lake Everstill) 호숫바닥 '젖은 상자' 반복(125부터 녹색).
+* 호드(대체 코스): 돌발톱 산맥 윈드쉬어 채석장/광산(Windshear Crag/Mine) '낡은 상자' 70→120 전후까지, 또는 아즈샤라 만/아샤라 해안가의 수중 상자 100 전후부터 병행.
+
+숙련 120–175
+
+* 얼라이언스: 저습지(웨틀랜즈) 메네실 항구 북쪽 난파선 해안/수중 '젖은 상자' 160까지 느려지지만 175까지 가능.
+* 호드: 데솔라스 사르테리스 해안(Sar'theris Strand) 해안·수중 상자 120→170대까지.
+
+숙련 175–240
+
+* 공통: 황야의 땅 배드랜즈 앙고르 요새(Angor Fortress) 내부 상자. 리젠 빠름(정예 있음 주의). 얼라·호드 모두 가능.
+
+숙련 240–300
+
+* 주 코스(공통): 타나리스 남동부 로스트 리거 코브(Lost Rigger Cove) 해적 소굴—오두막/나루터/상자 리젠 빠름. 240→300.
+* 보조 코스(혼잡 시): 이글거리는 협곡(Searing Gorge) 슬래그 핏 내부 상자 225→280, 아즈샤라 Bay of Storms 해안/난파선 수중 상자 250→300.
+
+메모
+
+* 수중 구간은 몬스터 레벨이 20대 초중반이므로 저레벨이면 은신 경로 확보 후 진행.
+* 상자 리젠이 느리면 인접 스팟(같은 지역 내 다른 배/오두막/난파선)로 순환.
+* 상자 숙련이 '녹색'이 되어도 실패→성공 반복으로 소폭 오르니 꾸준히 시도.]]
+
+    editBox:SetText(lockContent)
+    editBox:SetCursorPosition(0)
+
+    -- 팝업 표시
+    frame:Show()
+    LockPopupFrame = frame
+
+    -- ESC 키로 닫기 위해 UISpecialFrames에 추가
+    tinsert(UISpecialFrames, "LockPopupFrame")
+end
+
+-- 연금술 숙련 팝업창 생성 함수
+local function ShowAlchemyPopup()
+    -- 기존 팝업이 있으면 제거
+    if AlchemyPopupFrame then
+        AlchemyPopupFrame:Hide()
+        AlchemyPopupFrame = nil
+    end
+
+    -- 메인 프레임 생성 (BackdropTemplate 상속)
+    local frame = CreateFrame("Frame", "AlchemyPopupFrame", UIParent, "BackdropTemplate")
+    frame:SetWidth(700)
+    frame:SetHeight(500)
+    frame:SetPoint("CENTER", 0, 0)
+    frame:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 32,
+        insets = { left = 11, right = 12, top = 12, bottom = 11 }
+    })
+    frame:SetBackdropColor(0, 0, 0, 0.9)
+    frame:EnableMouse(true)
+    frame:SetMovable(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    frame:SetFrameStrata("DIALOG")
+
+    -- 제목
+    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOP", frame, "TOP", 0, -15)
+    title:SetText("|cFFFFD700와우 클래식 연금술 1~300 숙련 가이드|r")
+
+    -- 닫기 버튼
+    local closeButton = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+    closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
+
+    -- 스크롤 프레임 생성
+    local scrollFrame = CreateFrame("ScrollFrame", "AlchemyScrollFrame", frame, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 20, -45)
+    scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -40, 20)
+
+    -- EditBox 생성
+    local editBox = CreateFrame("EditBox", nil, scrollFrame)
+    editBox:SetMultiLine(true)
+    editBox:SetFontObject(GameFontNormal)
+    editBox:SetWidth(640)
+    editBox:SetAutoFocus(false)
+    editBox:SetScript("OnEscapePressed", function(self) frame:Hide() end)
+    scrollFrame:SetScrollChild(editBox)
+
+    -- 연금술숙련.txt 내용 로드
+    local alchemyContent = [[와우 클래식 연금술 1~300 숙련 가이드
+
+[준비물]
+유리 약병 74개
+가연 약병 65개
+수정 약병 100개
+평온초 59개
+은엽수 59개
+찔레가시 80개
+생체기풀 30개
+마법초 15개
+갈래물풀 40개
+생명의 뿌리 30개
+왕꽃잎풀 30개
+황금가시 45개
+야생 철쭉 5개
+태양풀 70개
+카드가의 수염 15개
+아서스의 눈물 20개
+실명초 40개
+황금 산삼 75개
+은초롱이 40개
+
+[숙련도 작업 방법]
+
+1–60
+제작: 최하급 치유 물약 (약 59회)
+재료: 평온초 59, 은엽수 59, 유리 약병 59
+메모: 최하급 치유 물약 50개는 하급 치유 물약의 재료이므로 보관
+
+60–110
+제작: 하급 치유 물약 (약 50회)
+재료: 최하급 치유 물약 50, 찔레가시 50
+
+110–140
+제작: 치유 물약 (약 30회)
+재료: 찔레가시 30, 생체기풀 30, 가연 약병 30
+
+140–155
+제작: 하급 마나 물약 (약 15회)
+재료: 마법초 15, 갈래물풀 15, 유리 약병 15
+대안(갈래물풀이 비싸거나 없을 때):
+1. 화염 오일 15개 = 불지느러미통돔 30 + 유리 약병 15
+2. 치유 물약을 계속 제작
+
+155–185
+제작: 상급 치유 물약 (약 30회)
+재료: 왕꽃잎풀 30, 생명의 뿌리 30, 가연 약병 30
+보조 루트(140–155에서 화염 오일을 만들었다면):
+화염 강화의 비약 7개 = 화염 오일 14 + 왕꽃잎풀 7 + 가연 약병 7, 이후 상급 치유 물약 진행
+
+185–210
+제작: 민첩의 비약 (약 25회)
+재료: 갈래물풀 25, 황금가시 25, 가연 약병 25
+대안(황금가시가 부족할 때):
+185–195
+1) 마나 물약 = 갈래물풀 + 왕꽃잎풀 + 가연 약병
+2) 하급 투명 물약 = 미명초 + 야생 철쭉 + 가연 약병
+황금가시가 전혀 없으면 190–210
+자연 저항 물약 = 갈래물풀 + 생명의 뿌리 + 가연 약병
+도안 위치: 무법항, 가젯잔, 페더문 요새, 모쟈케 야영지의 연금술 상인
+
+210–215
+제작: 상급 방어 비약 (약 5회)
+재료: 황금가시 5, 야생 철쭉 5, 가연 약병 5
+
+215–230
+제작: 최상급 치유 물약 (약 15회)
+재료: 태양풀 15, 카드가의 수염 15, 수정 약병 15
+
+230–250
+제작: 언데드의 비약 (약 20회)
+재료: 아서스의 눈물 20, 수정 약병 20
+
+250–265
+제작: 상급 민첩의 비약 (약 15회)
+재료: 태양풀 15, 황금가시 15, 수정 약병 15
+
+265–285
+제작: 최상급 마나 물약 (약 20회)
+재료: 태양풀 40, 실명초 40, 수정 약병 20
+
+285–300
+제작: 일급 치유 물약 (약 20회)
+재료: 황금 산삼 40, 은초롱이 20, 수정 약병 20
+
+[전문기술 숙련도(트레이너 구간)]
+
+1–75 (요구 레벨 1)
+위치: 대도시, 시작 지역의 두 번째 마을(칼바위 언덕, 센진 마을, 블러드후프 마을, 브릴, 골드샤이어, 카라노스, 돌라나르)
+칭호: 수습 연금술사
+
+50–150 (요구 레벨 10)
+위치: 대도시
+칭호: 수습 연금술사
+
+125–225 (요구 레벨 20)
+호드: 언더시티, 스토나드(슬픔의 늪)
+얼라이언스: 다르나서스, 페더문 요새(페랄라스)
+칭호: 숙련 연금술사
+
+200–300 (요구 레벨 35)
+호드: 스토나드(슬픔의 늪)
+얼라이언스: 페더문 요새(페랄라스)
+칭호: 전문 연금술사
+
+[NPC 위치]
+
+150–225 트레이너
+호드: 학자 허버스 헤시 – 언더시티(연금술 실험실)
+얼라이언스: 에이네실 – 다르나서스(장인의 정원)
+
+225–300 트레이너
+호드: 로그바 – 스토나드(슬픔의 늪)
+얼라이언스: 킬린나 윈드위스퍼 – 페더문 요새(페랄라스)]]
+
+    editBox:SetText(alchemyContent)
+    editBox:SetCursorPosition(0)
+
+    -- 팝업 표시
+    frame:Show()
+    AlchemyPopupFrame = frame
+
+    -- ESC 키로 닫기 위해 UISpecialFrames에 추가
+    tinsert(UISpecialFrames, "AlchemyPopupFrame")
+end
+
+-- 요리 숙련 팝업창 생성 함수
+local function ShowCookingPopup()
+    -- 기존 팝업이 있으면 제거
+    if CookingPopupFrame then
+        CookingPopupFrame:Hide()
+        CookingPopupFrame = nil
+    end
+
+    -- 메인 프레임 생성 (BackdropTemplate 상속)
+    local frame = CreateFrame("Frame", "CookingPopupFrame", UIParent, "BackdropTemplate")
+    frame:SetWidth(650)
+    frame:SetHeight(450)
+    frame:SetPoint("CENTER", 0, 0)
+    frame:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 32,
+        insets = { left = 11, right = 12, top = 12, bottom = 11 }
+    })
+    frame:SetBackdropColor(0, 0, 0, 0.9)
+    frame:EnableMouse(true)
+    frame:SetMovable(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    frame:SetFrameStrata("DIALOG")
+
+    -- 제목
+    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOP", frame, "TOP", 0, -15)
+    title:SetText("|cFFFFD700와우 클래식 요리 숙련 가이드|r")
+
+    -- 닫기 버튼
+    local closeButton = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+    closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
+
+    -- 스크롤 프레임 생성
+    local scrollFrame = CreateFrame("ScrollFrame", "CookingScrollFrame", frame, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 20, -45)
+    scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -40, 20)
+
+    -- EditBox 생성
+    local editBox = CreateFrame("EditBox", nil, scrollFrame)
+    editBox:SetMultiLine(true)
+    editBox:SetFontObject(GameFontNormal)
+    editBox:SetWidth(590)
+    editBox:SetAutoFocus(false)
+    editBox:SetScript("OnEscapePressed", function(self) frame:Hide() end)
+    scrollFrame:SetScrollChild(editBox)
+
+    -- 요리숙련.txt 내용 로드
+    local cookingContent = [[[기본]
+
+* 요리는 불이 있어야 함(여관 벽난로, 전문 NPC 주변 모닥불). 불이 없으면 '작은 모닥불' 제작해 사용.
+
+[숙련 1–300 고기 루트]
+
+* 1–50: 까맣게 탄 늑대 고기 또는 멧돼지 숯불구이(각각 늑대고기 1, 멧돼지고기 1).
+* 50–75: 곰고기 숯불구이(곰고기 1).
+* 75–100: 게살 케이크(게살 1 + 부드러운 양념 1) 또는 집게발 요리(집게발 1 + 부드러운 양념 1).
+* 100–150: 양념 늑대 케밥(늑대 살코기 2 + 스톰윈드 향초 1) 또는 진기한 맛의 오믈렛(랩터 알 1 + 매운 양념 1).
+* 150–175: 진기한 맛의 오믈렛 또는 매운 사자 고기(사자 고기 1 + 매운 양념 1).
+* 175–200: 독특한 거북이 비스크(거북이 고기 1 + 독특한 양념 1) 또는 랩터 숯불구이(랩터 고기 1 + 매운 양념 1).
+* 200–225: 거미 소시지(하얀 거미 고기 2) 또는 랩터 숯불구이.
+
+[숙련 1–300 생선 루트(낚시 병행용)]
+
+* 1–50: 비단잉어 구이(비단잉어 1).
+* 50–100: 긴주둥이진흙퉁돔 구이(긴주둥이진흙퉁돔 1).
+* 100–175: 표범메기 구이(표범메기 1).
+* 175–225: 미스릴송어 구이(미스릴송어 1).
+* 225–250: 점박이놀래기 구이(점박이놀래기 1).
+* 250–275: 삶은 해비늘연어(해비늘연어 1).
+* 275–300: 망둥어 스테이크(큰 망둥어 1 + 매운 양념 1 + 독특한 양념 1).
+  '점박이놀래기/해비늘연어' 레시피는 타나리스 '긱킥스', '망둥어 스테이크' 레시피는 '신드라 톨그래스/비비안나'가 판매.
+
+[전문 단계 승급 정보]
+
+* 150→225(전문): '고급 요리책(Expert Cookbook)' 구매 후 사용
+  판매처: 얼라—샨드리나(잿빛 골짜기 50,65) / 호드—울란(잊혀진 땅 26,29), 가격 1골드(또는 경매장).
+* 225→300(대가/Artisan): 타나리스 가젯잔의 **더지 퀵클레이브**에게 퀘스트 완료 필요(레벨 35+, 숙련 225+).
+  미리 준비하면 빠름: 거대한 알 12, 고소한 조갯살 10, 알터랙 스위스 20.
+
+[참고/메모]
+
+* 낮은 레벨 생선 레시피(비단잉어/긴주둥이진흙퉁돔/표범메기/미스릴송어)는 대체로 낚시용품 상인에게서 구매 가능.
+* 생선 루트 총 대략 수량 예시: 비단잉어 50, 긴주둥이진흙퉁돔 50, 표범메기 75, 미스릴송어 50, 점박이놀래기 25, 해비늘연어 25, 큰 망둥어 25(+양념).]]
+
+    editBox:SetText(cookingContent)
+    editBox:SetCursorPosition(0)
+
+    -- 팝업 표시
+    frame:Show()
+    CookingPopupFrame = frame
+
+    -- ESC 키로 닫기 위해 UISpecialFrames에 추가
+    tinsert(UISpecialFrames, "CookingPopupFrame")
+end
+
+-- 낚시 숙련 팝업창 생성 함수
+local function ShowFishingPopup()
+    -- 기존 팝업이 있으면 제거
+    if FishingPopupFrame then
+        FishingPopupFrame:Hide()
+        FishingPopupFrame = nil
+    end
+
+    -- 메인 프레임 생성 (BackdropTemplate 상속)
+    local frame = CreateFrame("Frame", "FishingPopupFrame", UIParent, "BackdropTemplate")
+    frame:SetWidth(700)
+    frame:SetHeight(500)
+    frame:SetPoint("CENTER", 0, 0)
+    frame:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 32,
+        insets = { left = 11, right = 12, top = 12, bottom = 11 }
+    })
+    frame:SetBackdropColor(0, 0, 0, 0.9)
+    frame:EnableMouse(true)
+    frame:SetMovable(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    frame:SetFrameStrata("DIALOG")
+
+    -- 제목
+    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOP", frame, "TOP", 0, -15)
+    title:SetText("|cFFFFD700와우 클래식 낚시 숙련 가이드|r")
+
+    -- 닫기 버튼
+    local closeButton = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+    closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
+
+    -- 스크롤 프레임 생성
+    local scrollFrame = CreateFrame("ScrollFrame", "FishingScrollFrame", frame, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 20, -45)
+    scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -40, 20)
+
+    -- EditBox 생성
+    local editBox = CreateFrame("EditBox", nil, scrollFrame)
+    editBox:SetMultiLine(true)
+    editBox:SetFontObject(GameFontNormal)
+    editBox:SetWidth(640)
+    editBox:SetAutoFocus(false)
+    editBox:SetScript("OnEscapePressed", function(self) frame:Hide() end)
+    scrollFrame:SetScrollChild(editBox)
+
+    -- 낚시숙련.txt 내용 로드
+    local fishingContent = [[[요약: 등급/요구조건/비용]
+
+* 수습 낚시(1–75): 캐릭터 레벨 5 필요, 비용 1실버.
+* 숙련 낚시(75–150): 캐릭터 레벨 10 필요, 낚시 숙련 50 필요, 비용 5실버.
+* 전문 낚시(150–225): 캐릭터 레벨 20 필요, 낚시 숙련 125 이상. 책 사용으로 습득.
+* 대가 낚시(225–300): 캐릭터 레벨 35 필요, 낚시 숙련 225 이상. 퀘스트 완료로 습득.
+
+[전문/대가 승급]
+
+* 전문(150–225): 책 "고급 낚시정보" 사용 → 판매 NPC: 무법항(가시덤불 골짜기) 27.4, 77의 상인, 가격 1골드.
+* 대가(225–300): 퀘스트 "낚시의 달인 네트 페이글" 수락/완료 → 먼지진흙 습지대 59, 60의 네트 페이글. 요구 어획물 4종:
+
+  1. 페랄라스 참치 – 페랄라스 62, 52 부근.
+  2. 안개갈대 황새치 – 슬픔의 늪 동쪽 해안가.
+  3. 살데리스 아귀 – 데솔라스 사르테리스 해안.
+  4. 폭풍 해안 푸른도루묵 – 가시덤불 골짜기 서쪽 해안가.
+
+[숙련 올리는 코스(권장 루트)]
+
+* 1–75: 각 대도시와 시작 지역 연못/강(언더시티 제외). 비단잉어, 긴주둥이진흙퉁돔, 표범메기 등 낚시. 스킬 1→75까지 충분.
+* 75–150: 같은 지역에서 계속 낚시하거나, 100 전후부터 해안·강가로 이동. (숙련 책/트레이너 배우고 진행)
+* 130–225: 먼지진흙 습지대 권장. 내륙(호수)에서 미스릴송어, 해안에서 돌비늘대구/점박이놀래기/기름기 많은 아귀/불지느러미퉁돔 등 낚시. 150 이후 전문 책 사용 후 225까지 올림.
+* 205–300: 타나리스 스팀휘들 항구 일대 권장. 주 어종은 점박이놀래기(해안). 그 외 빛깔좋은 망둥어, 불지느러미퉁돔, 돌비늘대구, 넙치농어, 겨울오징어, 돌비늘뱀장어 떼 등. 225 달성 후 네트 페이글 퀘스트 완료로 대가 습득, 300까지 지속 낚시.
+
+[전문 낚시꾼(트레이너) 예시 위치]
+
+* 얼라이언스: 스톰윈드(아놀드 리랜드), 아이언포지(그림누르 스톤브랜드), 다르나서스(아스타이아), 메네실 항구(해럴드 리그스), 골드샤이어(리 브라운), 레이크샤이어(매튜 호퍼) 등.
+* 호드: 언더시티(알만드 크롬웰), 썬더 블러프(카 미스트러너), 오그리마(루막), 블러드후프 마을(우탄 스위프트워터), 가시덤불 골짜기 무법항(마이즈 럭키캐치) 등.
+  *대부분의 수도/거점 낚시꾼에게서 1–150 구간을 배울 수 있음.
+
+[숙련별 추천 낚시터 정리]
+
+* 1–150: 수도/도시 주변 수역(언더시티 제외) – 비단잉어, 긴주둥이진흙퉁돔, 표범메기.
+* 130–225: 먼지진흙 습지대 – 미스릴송어(내륙), 돌비늘대구/점박이놀래기(해안), 불지느러미퉁돔, 기름기 많은 아귀.
+* 205–300: 타나리스 스팀휘들 항구 – 점박이놀래기 중심, 상황 따라 망둥어·돌비늘대구 등 병행.
+
+[팁]
+
+* 물가 근처 모닥불이나 벽난로에서 요리로 바로 가공하면 가방 압축이 쉬움.
+* 특정 어종은 시간/계절의 영향을 받음(예: 겨울오징어는 야간/겨울에 효율적).
+* 225 이후 바로 퀘스트를 수락해 둔 뒤 어획물 4종을 모으면 대가 승급이 빠름.]]
+
+    editBox:SetText(fishingContent)
+    editBox:SetCursorPosition(0)
+
+    -- 팝업 표시
+    frame:Show()
+    FishingPopupFrame = frame
+
+    -- ESC 키로 닫기 위해 UISpecialFrames에 추가
+    tinsert(UISpecialFrames, "FishingPopupFrame")
+end
+
+-- 응급치료 숙련 팝업창 생성 함수
+local function ShowFirstAidPopup()
+    -- 기존 팝업이 있으면 제거
+    if FirstAidPopupFrame then
+        FirstAidPopupFrame:Hide()
+        FirstAidPopupFrame = nil
+    end
+
+    -- 메인 프레임 생성 (BackdropTemplate 상속)
+    local frame = CreateFrame("Frame", "FirstAidPopupFrame", UIParent, "BackdropTemplate")
+    frame:SetWidth(650)
+    frame:SetHeight(450)
+    frame:SetPoint("CENTER", 0, 0)
+    frame:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 32,
+        insets = { left = 11, right = 12, top = 12, bottom = 11 }
+    })
+    frame:SetBackdropColor(0, 0, 0, 0.9)
+    frame:EnableMouse(true)
+    frame:SetMovable(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    frame:SetFrameStrata("DIALOG")
+
+    -- 제목
+    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOP", frame, "TOP", 0, -15)
+    title:SetText("|cFFFFD700응급치료 숙련 1~300 가이드|r")
+
+    -- 닫기 버튼
+    local closeButton = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+    closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
+
+    -- 스크롤 프레임 생성
+    local scrollFrame = CreateFrame("ScrollFrame", "FirstAidScrollFrame", frame, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 20, -45)
+    scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -40, 20)
+
+    -- EditBox 생성
+    local editBox = CreateFrame("EditBox", nil, scrollFrame)
+    editBox:SetMultiLine(true)
+    editBox:SetFontObject(GameFontNormal)
+    editBox:SetWidth(590)
+    editBox:SetAutoFocus(false)
+    editBox:SetScript("OnEscapePressed", function(self) frame:Hide() end)
+    scrollFrame:SetScrollChild(editBox)
+
+    -- 응급치료숙련.txt 내용 로드
+    local firstAidContent = [[응급치료 숙련 1~300
+
+[승급 단계 요약]
+
+* 초급 응급치료: 숙련 한도 75 (도시 응급치료사에게 습득)
+* 수습 응급치료: 숙련 50 → 한도 150 (응급치료사에게 습득)
+* 고급 응급치료(책): 숙련 125 → 한도 225
+  · 호드: 발라이 로크웨인 – 먼지진흙 습지대, 담쟁이 마을
+  · 얼라: 데네브 워커 – 아라시 고원, 스트롬가드
+* 대가 응급치료(퀘스트): 숙련 225 / 캐릭터 35 → 한도 300
+  · 호드 퀘스트 NPC: 그레고리 빅터 – 아라시 고원, 해머폴
+  · 얼라 퀘스트 NPC: 구스타프 밴하우젠 – 먼지진흙 습지대, 테라모어
+
+[제작/도안 습득표]
+
+* 리넨 붕대: 리넨 옷감 1개
+* 두꺼운 리넨 붕대 (숙련 40): 리넨 옷감 1개
+* 해독제 (숙련 80): 작은 독주머니 1개
+* 양모 붕대: 양모 옷감 1개
+* 두꺼운 양모 붕대 (숙련 115): 양모 옷감 2개
+* 비단 붕대 (숙련 150): 비단 옷감 1개
+* (책) 처방전: 두꺼운 비단 붕대 (숙련 180): 비단 옷감 2개
+* (책) 처방전: 마법 붕대 (숙련 210): 마법 옷감 1개
+  · 책 판매처 예시: 얼라—데네브 워커(아라시 고원, 스트롬가드)
+* 두꺼운 마법 붕대 (숙련 240): 마법 옷감 2개
+  · 호드 트레이너: 그레고리 빅터(해머폴)
+* 룬매듭 붕대 (숙련 260): 룬무늬 옷감 1개
+  · 얼라 트레이너: 구스타프 밴하우젠(테라모어)
+* 두꺼운 룬매듭 붕대 (숙련 290): 룬무늬 옷감 2개
+* 강력한 해독제 (숙련 300): (은빛여명회 병참—동/서부 역병지대, 약간 우호) *일반적으로 큰 독주머니 사용*
+
+[올리는 루트 예시]
+1–40 리넨 붕대 → 40–80 두꺼운 리넨 붕대 → 80 해독제 몇 개
+80–115 양모 붕대 → 115–150 두꺼운 양모 붕대 → 150–180 비단 붕대
+180–210 두꺼운 비단 붕대(책) → 210–240 마법 붕대(책)
+240–260 두꺼운 마법 붕대(퀘 완료 후 트레이너)
+260–290 룬매듭 붕대 → 290–300 두꺼운 룬매듭 붕대
+(필요 시 300에서 강력한 해독제 습득)]]
+
+    editBox:SetText(firstAidContent)
+    editBox:SetCursorPosition(0)
+
+    -- 팝업 표시
+    frame:Show()
+    FirstAidPopupFrame = frame
+
+    -- ESC 키로 닫기 위해 UISpecialFrames에 추가
+    tinsert(UISpecialFrames, "FirstAidPopupFrame")
+end
+
+-- 대장 숙련 팝업창 생성 함수
+local function ShowBlacksmithPopup()
+    -- 기존 팝업이 있으면 제거
+    if BlacksmithPopupFrame then
+        BlacksmithPopupFrame:Hide()
+        BlacksmithPopupFrame = nil
+    end
+
+    -- 메인 프레임 생성 (BackdropTemplate 상속)
+    local frame = CreateFrame("Frame", "BlacksmithPopupFrame", UIParent, "BackdropTemplate")
+    frame:SetWidth(750)
+    frame:SetHeight(550)
+    frame:SetPoint("CENTER", 0, 0)
+    frame:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 32,
+        insets = { left = 11, right = 12, top = 12, bottom = 11 }
+    })
+    frame:SetBackdropColor(0, 0, 0, 0.9)
+    frame:EnableMouse(true)
+    frame:SetMovable(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    frame:SetFrameStrata("DIALOG")
+
+    -- 제목
+    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOP", frame, "TOP", 0, -15)
+    title:SetText("|cFFFFD700대장기술 1~300 숙련 가이드|r")
+
+    -- 닫기 버튼
+    local closeButton = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+    closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
+
+    -- 스크롤 프레임 생성
+    local scrollFrame = CreateFrame("ScrollFrame", "BlacksmithScrollFrame", frame, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 20, -45)
+    scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -40, 20)
+
+    -- EditBox 생성
+    local editBox = CreateFrame("EditBox", nil, scrollFrame)
+    editBox:SetMultiLine(true)
+    editBox:SetFontObject(GameFontNormal)
+    editBox:SetWidth(690)
+    editBox:SetAutoFocus(false)
+    editBox:SetScript("OnEscapePressed", function(self) frame:Hide() end)
+    scrollFrame:SetScrollChild(editBox)
+
+    -- 대장숙련.txt 내용 로드 (긴 내용이므로 일부 요약)
+    local blacksmithContent = [[대장기술 1~300 숙련 가이드
+
+[준비물]
+작은 암석 150, 일반 암석 150, 큰 암석 105, 견고한 암석 120, 강도 높은 암석 20
+은괴 5, 강철 주괴 190, 금괴 5, 마법옷감 150
+구리 주괴 150, 청동 주괴 180, 철 주괴 230, 미스릴 주괴 320, 토륨 주괴 540
+별루비 20 또는 튼튼한 가죽 160
+
+[숙련 루트]
+1–30    조잡한 숫돌 ×33              재료: 작은 암석 33
+30–65   조잡한 연마석 ×55            재료: 작은 암석 110 (보관)
+65–75   일반 숫돌 ×25                재료: 일반 암석 25
+75–90   일반 연마석 ×35              재료: 일반 암석 70 (보관)
+90–100  구리 룬문자 허리띠 ×10       재료: 구리 주괴 100
+100–105 은마법막대 ×5                재료: 은괴 5, 조잡한 연마석 10
+105–110 구리 룬문자 허리띠 ×5        재료: 구리 주괴 50
+110–125 청동 다리보호구 ×15          재료: 청동 주괴 75
+125–140 단단한 연마석 ×35            재료: 큰 암석 105 (보관)
+140–150 청동 무늬 팔보호구 ×10       재료: 청동 주괴 50, 일반 연마석 20
+150–155 금마법막대 ×5                재료: 금괴 5, 일반 연마석 10
+155–165 녹색 철제 다리보호구 ×10     재료: 철 주괴 80, 단단한 연마석 10, 녹색 염료 10
+165–190 녹색 철제 팔보호구 ×25       재료: 철 주괴 150, 녹색 염료 25
+190–200 황금 미늘 팔보호구 ×10       재료: 강철 주괴 50, 단단한 연마석 20
+200–210 견고한 연마석 ×30            재료: 견고한 암석 120 (보관)
+210–225 견고한 미스릴 건틀릿 ×15     재료: 미스릴 주괴 90, 마법옷감 60
+225–235 강철 판금 투구 ×10           재료: 강철 주괴 140, 견고한 연마석 10
+235–250 미스릴 코이프 ×15            재료: 미스릴 주괴 150, 마법옷감 90
+250–260 강도 높은 숫돌 ×20           재료: 강도 높은 암석 20
+260–280 토륨 팔보호구 ×25            재료: 토륨 주괴 300, 푸른 마력의 수정 100
+280–300 토륨 신발 ×20 또는 토륨 투구 ×20
+        토륨 신발: 토륨 주괴 240, 튼튼한 가죽 160
+        토륨 투구: 토륨 주괴 240, 별루비 20
+
+[전문기술 승급]
+1–75 (요구 레벨 1): 수습 대장장이 – 대도시, 시작 지역
+50–150 (요구 레벨 10): 수습 대장장이 – 대도시
+125–225 (요구 레벨 20): 숙련 대장장이
+  호드: 오그리마 / 얼라: 아이언포지 / 중립: 무법항
+200–300 (요구 레벨 35): 전문 대장장이 – 중립: 무법항
+
+[NPC 위치]
+150–225 트레이너
+* 호드: 사루 스틸퓨리(오그리마, 명예의 골짜기)
+* 얼라: 벤구스 딥포지(아이언포지, 대용광로)
+
+225–300 트레이너
+* 중립: 브리크 킨크래프트(가시덤불 골짜기, 무법항)
+
+[무기/방어구 제작자 전문화]
+레벨 40, 숙련 225 필요
+* 무기 제작자: 달의 강철 브로드소드, 큰 철제도끼, 견고한 미스릴 도끼, 검은 대형 철퇴 제작
+* 방어구 제작자: 화려한 미스릴 세트 퀘스트 완료
+
+[참고]
+* 미스릴 박차를 활용하면 235–270 구간이 빠르고 저렴
+* 한정 판매/희귀 도안은 지역 상인 판매(경매장 확인)]]
+
+    editBox:SetText(blacksmithContent)
+    editBox:SetCursorPosition(0)
+
+    -- 팝업 표시
+    frame:Show()
+    BlacksmithPopupFrame = frame
+
+    -- ESC 키로 닫기 위해 UISpecialFrames에 추가
+    tinsert(UISpecialFrames, "BlacksmithPopupFrame")
+end
+
+-- 기계공학 숙련 팝업창 생성 함수
+local function ShowEngineeringPopup()
+    -- 기존 팝업이 있으면 제거
+    if EngineeringPopupFrame then
+        EngineeringPopupFrame:Hide()
+        EngineeringPopupFrame = nil
+    end
+
+    -- 메인 프레임 생성 (BackdropTemplate 상속)
+    local frame = CreateFrame("Frame", "EngineeringPopupFrame", UIParent, "BackdropTemplate")
+    frame:SetWidth(700)
+    frame:SetHeight(500)
+    frame:SetPoint("CENTER", 0, 0)
+    frame:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 32,
+        insets = { left = 11, right = 12, top = 12, bottom = 11 }
+    })
+    frame:SetBackdropColor(0, 0, 0, 0.9)
+    frame:EnableMouse(true)
+    frame:SetMovable(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    frame:SetFrameStrata("DIALOG")
+
+    -- 제목
+    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOP", frame, "TOP", 0, -15)
+    title:SetText("|cFFFFD700기계공학 1~300 숙련 가이드|r")
+
+    -- 닫기 버튼
+    local closeButton = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+    closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
+
+    -- 스크롤 프레임 생성
+    local scrollFrame = CreateFrame("ScrollFrame", "EngineeringScrollFrame", frame, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 20, -45)
+    scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -40, 20)
+
+    -- EditBox 생성
+    local editBox = CreateFrame("EditBox", nil, scrollFrame)
+    editBox:SetMultiLine(true)
+    editBox:SetFontObject(GameFontNormal)
+    editBox:SetWidth(640)
+    editBox:SetAutoFocus(false)
+    editBox:SetScript("OnEscapePressed", function(self) frame:Hide() end)
+    scrollFrame:SetScrollChild(editBox)
+
+    -- 기계공학숙련.txt 내용 로드
+    local engineeringContent = [[기계공학 1~300 숙련 가이드
+
+[준비물]
+작은 암석 60, 일반 암석 60, 큰 암석 30, 견고한 암석 120, 강도 높은 암석 60
+리넨 옷감 40, 양모 옷감 60, 마법 옷감 20, 룬무늬 옷감 35
+구리 주괴 66, 청동 주괴 110, 강철 주괴 4, 미스릴 주괴 170, 토륨 주괴 225
+은괴 5, 테마노 10(또는 큰 암석 30), 일반 가죽 15
+
+[숙련 루트]
+1–30    천연 화약 ×60              재료: 작은 암석 60 (보관)
+30–50   구리 나사 한줌 ×30         재료: 구리 주괴 30 (보관)
+50–51   만능 스패너 ×1             재료: 구리 주괴 6 (보관)
+51–75   천연 구리 폭탄 ×30         재료: 구리 주괴 30, 구리 나사 한줌 30, 천연 화약 60, 리넨 30
+75–90   굵은 화약 ×60              재료: 일반 암석 60 (보관)
+90–100  일반 다이너마이트 ×20      재료: 굵은 화약 60, 리넨 20
+100–105 은 접지 ×5                 재료: 은괴 5
+105–125 청동관 ×25                 재료: 청동 주괴 50, 약한 융해촉진제 25
+125–135 일반 조준경 ×10            재료: 청동 주괴 10, 테마노 10
+135–150 청동 회전 장치 ×15         재료: 청동 주괴 30, 양모 15, 강한 화약 30
+150–160 청동 골격 ×15              재료: 청동 주괴 30, 일반 가죽 15, 양모 15 (보관)
+160–175 양 폭탄 ×15                재료: 강한 화약 30, 청동 골격 15, 청동 회전 장치 15, 양모 30
+175–176 자동회전 초정밀조율기 ×1   재료: 강철 주괴 4 (보관)
+176–195 조밀한 화약 ×60            재료: 견고한 암석 120 (보관)
+195–200 미스릴 관 ×7               재료: 미스릴 주괴 21 (노움 특화시 6개 보관)
+200–216 유동성 제동장치 ×20        재료: 미스릴 주괴 20, 마법 옷감 20, 조밀한 화약 20 (보관)
+215–238 미스릴 형틀 ×40            재료: 미스릴 주괴 120 (보관)
+238–250 고폭탄 ×20                 재료: 미스릴 형틀 40, 유동성 제동장치 20, 조밀한 화약 40
+250–260 강도 높은 화약 ×30         재료: 강도 높은 암석 60
+260–285 토륨 부품 ×35              재료: 토륨 주괴 105, 룬무늬 옷감 35
+285–300 토륨관 ×20                 재료: 토륨 주괴 120
+※ 토륨관 도면: 여명의 설원 눈망루 마을 기계공학 용품 상인 판매
+
+[전문기술 승급]
+1–75 (요구 레벨 1): 수습 기계공학자 – 대도시, 시작 지역
+50–150 (요구 레벨 10): 수습 기계공학자 – 대도시
+125–225 (요구 레벨 20): 숙련 기계공학자
+  호드: 오그리마 / 얼라: 아이언포지
+200–300 (요구 레벨 35): 전문 기계공학자 – 가젯잔(타나리스)
+
+[특화 – 노움 기계공학] (요구 레벨 30, 숙련 200+)
+필수 제작물: 고급 표적 허수아비 2, 미스릴 관 6, 정밀한 조준경 1
+시작 NPC: 호드—그레이엄 반 탈렌(언더시티) / 얼라—릴리암 스파크스핀들(스톰윈드)
+완료 NPC: 호드—오글소프 오브노티쿠스(무법항) / 얼라—수석땜장이 오버스파크(아이언포지)
+
+[특화 – 고블린 기계공학] (요구 레벨 30, 숙련 200+)
+필수 제작물: 대형 철제 폭탄 20, 조밀한 다이너마이트 20, 양 폭탄 5
+시작 NPC: 호드—그레이엄 반 탈렌(언더시티) / 얼라—스프링스핀들 피즐기어(아이언포지)
+완료 NPC: 닉스 스프로켓스프링(가젯잔)
+
+[참고]
+* 화약류/형틀/제동장치/관은 이후 제작에 연계되니 보관 필수
+* 융해촉진제 등 소모품은 직업/대장용품 상인에게서 구매]]
+
+    editBox:SetText(engineeringContent)
+    editBox:SetCursorPosition(0)
+
+    -- 팝업 표시
+    frame:Show()
+    EngineeringPopupFrame = frame
+
+    -- ESC 키로 닫기 위해 UISpecialFrames에 추가
+    tinsert(UISpecialFrames, "EngineeringPopupFrame")
+end
+
+-- 재봉술 숙련 팝업창 생성 함수
+local function ShowTailoringPopup()
+    -- 기존 팝업이 있으면 제거
+    if TailoringPopupFrame then
+        TailoringPopupFrame:Hide()
+        TailoringPopupFrame = nil
+    end
+
+    -- 메인 프레임 생성 (BackdropTemplate 상속)
+    local frame = CreateFrame("Frame", "TailoringPopupFrame", UIParent, "BackdropTemplate")
+    frame:SetWidth(700)
+    frame:SetHeight(500)
+    frame:SetPoint("CENTER", 0, 0)
+    frame:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 32,
+        insets = { left = 11, right = 12, top = 12, bottom = 11 }
+    })
+    frame:SetBackdropColor(0, 0, 0, 0.9)
+    frame:EnableMouse(true)
+    frame:SetMovable(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    frame:SetFrameStrata("DIALOG")
+
+    -- 제목
+    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOP", frame, "TOP", 0, -15)
+    title:SetText("|cFFFFD700재봉술 1~300 숙련 가이드|r")
+
+    -- 닫기 버튼
+    local closeButton = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+    closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
+
+    -- 스크롤 프레임 생성
+    local scrollFrame = CreateFrame("ScrollFrame", "TailoringScrollFrame", frame, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 20, -45)
+    scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -40, 20)
+
+    -- EditBox 생성
+    local editBox = CreateFrame("EditBox", nil, scrollFrame)
+    editBox:SetMultiLine(true)
+    editBox:SetFontObject(GameFontNormal)
+    editBox:SetWidth(640)
+    editBox:SetAutoFocus(false)
+    editBox:SetScript("OnEscapePressed", function(self) frame:Hide() end)
+    scrollFrame:SetScrollChild(editBox)
+
+    -- 재봉술숙련.txt 내용 로드
+    local tailoringContent = [[재봉술 1~300 숙련 가이드
+
+[준비물]
+리넨 옷감 170, 양모 옷감 60, 비단 옷감 760, 마법 옷감 280, 룬무늬 옷감 900
+일반 가죽 35, 두꺼운 가죽 75, 튼튼한 가죽 10
+청색 염료 35, 붉은 염료 40, 불의 정령 3
+
+[숙련 루트]
+1–50    리넨 볼트 ×50               재료: 리넨 옷감 100 (보관)
+50–70   리넨 가방 ×20               재료: 리넨 볼트 60, 일반 실 60
+70–75   강화 리넨 어깨보호대 ×5     재료: 리넨 볼트 10, 일반 실 10
+75–105  양모 볼트 ×45               재료: 양모 옷감 135 (보관)
+105–110 회색 양모 셔츠 ×5           재료: 양모 볼트 10, 묵은 염료 5, 일반 실 5
+110–125 두배로 짠 양모 어깨보호대 ×15 재료: 양모 볼트 45, 일반 실 30
+125–145 비단 볼트 ×50               재료: 비단 옷감 200 (보관)
+145–160 연푸른색 비단 가슴보호대 ×15 재료: 비단 볼트 60, 청색 염료 30, 일반 실 30
+160–170 비단 머리띠 ×10             재료: 비단 볼트 30, 일반 실 20
+170–175 품격있는 고급 셔츠 ×5       재료: 비단 볼트 15, 청색 염료 10, 일반 실 10
+175–185 마법 볼트 ×75               재료: 마법 옷감 375 (보관)
+185–200 진홍색 비단 바지 ×15        재료: 비단 볼트 60, 붉은 염료 30, 비단 실 30
+200–215 진홍색 비단 조끼 ×15        재료: 비단 볼트 60, 붉은 염료 30, 질긴 실 30
+215–220 검은 마법 머리띠/장갑 ×5    재료: 마법 볼트 15, 질긴 실 10
+220–230 검은 마법 장갑 ×10          재료: 마법 볼트 20, 질긴 실 20
+230–250 검은 마법 어깨보호대 ×20    재료: 마법 볼트 60, 질긴 실 40
+250–260 룬무늬 볼트 ×75             재료: 룬무늬 옷감 375 (보관)
+260–280 룬무늬 가방 ×20             재료: 룬무늬 볼트 100, 질긴 가죽 40, 룬무늬 실 20
+280–295 룬무늬 머리띠 ×15           재료: 룬무늬 볼트 60, 황금빛 진주 30, 룬무늬 실 15
+295–300 룬무늬 셔츠 ×5              재료: 룬무늬 볼트 25, 룬무늬 실 5
+
+[전문기술 승급]
+1–75 (요구 레벨 1): 수습 재봉술사 – 대도시
+50–150 (요구 레벨 10): 숙련 재봉술사 – 대도시
+125–225 (요구 레벨 20): 전문 재봉술사
+  호드: 언더시티, 오그리마 / 얼라: 스톰윈드, 아이언포지
+200–300 (요구 레벨 35): 대가 재봉술사
+  호드: 언더시티 / 얼라: 스톰윈드
+
+[NPC 위치]
+150–225: 호드—마가르(오그리마) / 얼라—조지 캔들러(스톰윈드)
+225–300: 호드—다르이스 파인(언더시티) / 얼라—조지 캔들러(스톰윈드)
+
+[참고]
+* 볼트는 이후 제작에 필요하니 보관
+* 260–280 대안: 룬무늬 장화/바지로 대체 가능]]
+
+    editBox:SetText(tailoringContent)
+    editBox:SetCursorPosition(0)
+
+    -- 팝업 표시
+    frame:Show()
+    TailoringPopupFrame = frame
+
+    -- ESC 키로 닫기 위해 UISpecialFrames에 추가
+    tinsert(UISpecialFrames, "TailoringPopupFrame")
+end
+
+-- 마법부여 숙련 팝업창 생성 함수
+local function ShowEnchantingPopup()
+    -- 기존 팝업이 있으면 제거
+    if EnchantingPopupFrame then
+        EnchantingPopupFrame:Hide()
+        EnchantingPopupFrame = nil
+    end
+
+    -- 메인 프레임 생성 (BackdropTemplate 상속)
+    local frame = CreateFrame("Frame", "EnchantingPopupFrame", UIParent, "BackdropTemplate")
+    frame:SetWidth(750)
+    frame:SetHeight(550)
+    frame:SetPoint("CENTER", 0, 0)
+    frame:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 32,
+        insets = { left = 11, right = 12, top = 12, bottom = 11 }
+    })
+    frame:SetBackdropColor(0, 0, 0, 0.9)
+    frame:EnableMouse(true)
+    frame:SetMovable(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    frame:SetFrameStrata("DIALOG")
+
+    -- 제목
+    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOP", frame, "TOP", 0, -15)
+    title:SetText("|cFFFFD700마법부여 1~300 숙련 가이드|r")
+
+    -- 닫기 버튼
+    local closeButton = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+    closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
+
+    -- 스크롤 프레임 생성
+    local scrollFrame = CreateFrame("ScrollFrame", "EnchantingScrollFrame", frame, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 20, -45)
+    scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -40, 20)
+
+    -- EditBox 생성
+    local editBox = CreateFrame("EditBox", nil, scrollFrame)
+    editBox:SetMultiLine(true)
+    editBox:SetFontObject(GameFontNormal)
+    editBox:SetWidth(690)
+    editBox:SetAutoFocus(false)
+    editBox:SetScript("OnEscapePressed", function(self) frame:Hide() end)
+    scrollFrame:SetScrollChild(editBox)
+
+    -- 마법부여숙련.txt 내용 로드
+    local enchantingContent = [[마법부여 1~300 숙련 가이드
+
+[준비물]
+이상한 가루 125, 하급 마법의 정수 1, 상급 마법의 정수 12
+영혼 가루 130, 하급 별의 정수 25, 상급 별의 정수 2
+환상 가루 240, 상급 신비의 정수 2
+꿈 가루 330, 하급 황천의 정수 5, 상급 황천의 정수 15
+환영 가루 40, 상급 영원의 정수 8, 눈부신 큰 결정 8
+음영석 1, 오색 진주 1, 검은 진주 1, 황금 진주 1
+구리/은/금/진은/아케나이트 마법막대 각 1개
+
+[숙련 루트]
+1–2     룬 구리마법막대 ×1           재료: 구리마법막대 1, 이상한 가루 1, 하급 마법의 정수 1
+2–50    손목: 최하급 생명력 ×48      재료: 이상한 가루 48
+50–90   손목: 최하급 생명력 ×40      재료: 이상한 가루 40
+90–100  손목: 최하급 체력 ×10        재료: 이상한 가루 30
+100–101 룬 은마법막대 ×1            재료: 은마법막대 1, 이상한 가루 6, 상급 마법의 정수 3, 음영석 1
+101–110 상급 마법 마법봉 ×9         재료: 장작나무 9, 상급 마법의 정수 9
+110–135 망토: 최하급 민첩 ×25       재료: 하급 별의 정수 25
+135–155 손목: 하급 체력 ×40         재료: 영혼 가루 40
+155–156 룬 금마법막대 ×1            재료: 금마법막대 1, 영혼 가루 2, 상급 별의 정수 2, 오색 진주 1
+156–185 손목: 하급 힘 ×80           재료: 영혼 가루 80
+185–200 손목: 힘 ×15               재료: 환상 가루 15
+200–201 룬 진은마법막대 ×1          재료: 진은마법막대 1, 검은 진주 1, 환상 가루 2, 상급 신비의 정수 2
+201–220 손목: 힘 ×25               재료: 환상 가루 25
+220–225 망토: 상급 보호 ×15         재료: 환상 가루 15
+225–230 장갑: 민첩 ×5               재료: 환상 가루 5, 하급 황천의 정수 5
+230–235 신발: 체력 ×5               재료: 환상 가루 25
+235–250 가슴: 최상급 생명력 ×25     재료: 환상 가루 150
+250–265 손목: 상급 힘 ×15           재료: 꿈 가루 30, 상급 황천의 정수 15
+265–294 방패: 상급 체력 ×30         재료: 꿈 가루 300
+294–295 룬문자 아케나이트 막대 ×1   재료: 아케나이트 막대 1, 황금 진주 1, 환상 가루 10, 상급 영원의 정수 4
+295–300 망토: 최상급 보호 ×5        재료: 환영 가루 40
+
+[전문기술 승급]
+1–75 (요구 레벨 1): 수습 마법부여사 – 대도시
+50–150 (요구 레벨 10): 수습 마법부여사 – 대도시
+125–225 (요구 레벨 20): 숙련 마법부여사
+  호드: 해바위 야영지(돌발톱) / 얼라: 아조라의 탑(엘윈)
+200–300 (요구 레벨 35): 전문 마법부여사 – 울다만 내부 '안노라'
+
+[NPC 위치]
+150–225: 호드—하가스(해바위 야영지) / 얼라—키타 파이어윈드(아조라 탑)
+225–300: 중립—안노라(울다만 인던 내부)
+
+[참고]
+* 방패 상급 체력 도안: 언더시티/다르나서스 직업용품 상인 한정판매
+* 망토 최하급 민첩 도안: 해바위 야영지/아스트라나르 상인
+* 250까지 재료 준비 후 울다만 1회 방문 권장]]
+
+    editBox:SetText(enchantingContent)
+    editBox:SetCursorPosition(0)
+
+    -- 팝업 표시
+    frame:Show()
+    EnchantingPopupFrame = frame
+
+    -- ESC 키로 닫기 위해 UISpecialFrames에 추가
+    tinsert(UISpecialFrames, "EnchantingPopupFrame")
+end
+
+-- 하드코어 위험지역 팝업창 생성 함수
+local function ShowHardcorePopup()
+    -- 기존 팝업이 있으면 제거
+    if HardcorePopupFrame then
+        HardcorePopupFrame:Hide()
+        HardcorePopupFrame = nil
+    end
+
+    -- 메인 프레임 생성 (BackdropTemplate 상속)
+    local frame = CreateFrame("Frame", "HardcorePopupFrame", UIParent, "BackdropTemplate")
+    frame:SetWidth(800)
+    frame:SetHeight(600)
+    frame:SetPoint("CENTER", 0, 0)
+    frame:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 32,
+        insets = { left = 11, right = 12, top = 12, bottom = 11 }
+    })
+    frame:SetBackdropColor(0, 0, 0, 0.9)
+    frame:EnableMouse(true)
+    frame:SetMovable(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    frame:SetFrameStrata("DIALOG")
+
+    -- 제목
+    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOP", frame, "TOP", 0, -15)
+    title:SetText("|cFFFF0000와우 클래식 하드코어 – 위험 지역 정리|r")
+
+    -- 닫기 버튼
+    local closeButton = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+    closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
+
+    -- 스크롤 프레임 생성
+    local scrollFrame = CreateFrame("ScrollFrame", "HardcoreScrollFrame", frame, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 20, -45)
+    scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -40, 20)
+
+    -- EditBox 생성
+    local editBox = CreateFrame("EditBox", nil, scrollFrame)
+    editBox:SetMultiLine(true)
+    editBox:SetFontObject(GameFontNormal)
+    editBox:SetWidth(740)
+    editBox:SetAutoFocus(false)
+    editBox:SetScript("OnEscapePressed", function(self) frame:Hide() end)
+    scrollFrame:SetScrollChild(editBox)
+
+    -- 하코.txt 내용 로드
+    local hardcoreContent = [[와우 클래식 하드코어 – 위험 지역 정리
+
+[전역 공통 주의]
+* * 표시는 PVP 플래그 유발 지점. 5분간 전투 미발생 시 해제
+* 중립 마을(무법항/가젯잔/눈망루/톱니항) 귀환은 전투 해제 후에만
+* 펫/소환수의 전투 상태 반드시 확인
+* 길 위의 경비병·정찰병 로밍 주의
+
+[그늘숲]
+• 다크샤이어: '누더기(Stitches)' 마을 난입 위험
+• 안전 포인트: 그리핀 NPC 옆 → 에바 부인 집 지붕
+• 까마귀 언덕~다크샤이어: 누더기 이동 경로 겹침
+
+[스톰윈드]
+• 구시가지: '다셸 스톤피스트+불량배 2' 이벤트
+
+[저습지]
+• 메네실 항구 여관: '타포케 잔+친구' 이벤트
+
+[힐스브래드 구릉지]
+• 사우스쇼어: '어둠의 암살자' 난입
+• 타렌 밀농장 방면: '죽음의 경비병' 애드 다발
+• 필드: '나릴라산즈' 로밍
+
+[아라시 고원]
+• 고셰크 농장→힐스브래드: '포세이큰 급사+경호원' 로밍
+
+[역병지대]
+• "영웅의 피" 클릭 시 '영웅의 넋' 소환
+• 동부 스트라솔름→티르의 손: '진홍십자군 급사'
+• 동부 경비탑 4곳[PVP]: 매복 위험 높음
+
+[모단 호수]
+• 길[PVP]: '호드 길잡이 3인방' 로밍
+
+[붉은마루 산맥]
+• 길목: 검은바위부족 그런트 매복
+
+[은빛소나무 숲]
+• 언더시티 가기 전: '누더기 골렘 2+연금술사'
+
+[슬픔의 늪]
+• 스토나드 인근[PVP]: 호드 로밍 경비
+• 월드보스 '솜누스' 로밍
+
+[저주받은 땅]
+• 월드보스 '파멸의 테레무스' 로밍
+
+[여명의 설원]
+• 입구→눈사태 마을: '눈사태일족 정찰꾼' 로밍
+• 눈망루[PVP]: 마을 내 PVP 스나이핑 위험
+
+[잊혀진 땅]
+• 연안: '깊은바다 거인' 로밍
+• 침묵의 초소: 독수리·유령 코도 애드
+
+[페랄라스]
+• 모자케 야영지[PVP]: 경비 애드→PVP→고렙 저격
+
+[불모의 땅]
+• 크로스로드[PVP]: 경비범위 광범위
+• 호드 주의: '얼라이언스 정찰대 4인방' 로밍
+
+[버섯구름 봉우리/소금 평원]
+• 엘리베이터 앞: 용사 NPC는 비선공, 오른쪽 선공 NPC 주의
+• 북쪽 우회 경로 추천
+
+[잿빛 골짜기]
+• 토막나무 주둔지[PVP]: 로밍 정찰병
+• 불모의 땅 경계: 오른쪽 '개구멍' 경로 사용
+
+[가시덤불 골짜기]
+• 구루바시 투기장[PVP]: 절대 진입 금지
+• 양 진영 매복 빈발
+
+[운고로 분화구]
+• '폭군 모쉬', '무쇠가죽 데빌사우루스' 로밍
+
+[황야의 땅]
+• '자리코틀' 로밍
+
+[동부 내륙지]
+• 레반터스크 트롤 마을: 접근 금지
+
+[레벨·이동 팁]
+• 노란색(상위) 몹과의 교전 자제
+• 하드코어는 던전 입장 레벨 상향 권장]]
+
+    editBox:SetText(hardcoreContent)
+    editBox:SetCursorPosition(0)
+
+    -- 팝업 표시
+    frame:Show()
+    HardcorePopupFrame = frame
+
+    -- ESC 키로 닫기 위해 UISpecialFrames에 추가
+    tinsert(UISpecialFrames, "HardcorePopupFrame")
+end
+
+-- 인던 정보 팝업창 생성 함수
+local function ShowDungeonPopup()
+    -- 기존 팝업이 있으면 제거
+    if DungeonPopupFrame then
+        DungeonPopupFrame:Hide()
+        DungeonPopupFrame = nil
+    end
+
+    -- 메인 프레임 생성 (BackdropTemplate 상속)
+    local frame = CreateFrame("Frame", "DungeonPopupFrame", UIParent, "BackdropTemplate")
+    frame:SetWidth(700)
+    frame:SetHeight(550)
+    frame:SetPoint("CENTER", 0, 0)
+    frame:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 32,
+        insets = { left = 11, right = 12, top = 12, bottom = 11 }
+    })
+    frame:SetBackdropColor(0, 0, 0, 0.9)
+    frame:EnableMouse(true)
+    frame:SetMovable(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    frame:SetFrameStrata("DIALOG")
+
+    -- 제목
+    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOP", frame, "TOP", 0, -15)
+    title:SetText("|cFF00FFFF적정 인던 레벨 가이드|r")
+
+    -- 닫기 버튼
+    local closeButton = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+    closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
+
+    -- 스크롤 프레임 생성
+    local scrollFrame = CreateFrame("ScrollFrame", "DungeonScrollFrame", frame, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 20, -45)
+    scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -40, 20)
+
+    -- EditBox 생성
+    local editBox = CreateFrame("EditBox", nil, scrollFrame)
+    editBox:SetMultiLine(true)
+    editBox:SetFontObject(GameFontNormal)
+    editBox:SetWidth(640)
+    editBox:SetAutoFocus(false)
+    editBox:SetScript("OnEscapePressed", function(self) frame:Hide() end)
+    scrollFrame:SetScrollChild(editBox)
+
+    -- 인던.txt 내용 로드
+    local dungeonContent = [[적정 인던 레벨 가이드
+
+[기준 설명]
+• 권장 레벨은 최종 보스 레벨 -3 기준
+• 힐러는 딜러/탱커보다 보통 1레벨 낮아도 가능
+• 파티 평균 레벨이 높으면 더 낮은 레벨로도 클리어 가능
+
+[권장 입장 레벨표]
+성난불길 협곡: 딜/탱 13+, 힐 12+
+죽음의 폐광: 딜/탱 18+, 힐 17+
+통곡의 동굴: 딜/탱 19+, 힐 18+
+그림자송곳니 성채: 딜/탱 23+, 힐 22+
+검은심연 나락: 딜/탱 25+, 힐 24+
+스톰윈드 지하감옥: 딜/탱 26+, 힐 25+
+가시덩굴 우리: 딜/탱 30+, 힐 29+
+놈리건: 딜/탱 31+, 힐 30+
+
+[붉은십자군 수도원]
+묘지(4번방): 딜/탱 31+, 힐 30+
+도서관(1번방): 딜/탱 34+, 힐 33+
+무기고(2번방): 딜/탱 37+, 힐 36+
+대성당(3번방): 딜/탱 39+, 힐 38+
+
+[중후반 던전]
+가시덩굴 구릉: 딜/탱 38+, 힐 37+
+울다만: 딜/탱 43+, 힐 42+ (※내부 레벨 편차 큼)
+줄파락: 딜/탱 45+, 힐 44+
+마라우돈(퀘팟): 딜/탱 46+, 힐 45+
+마라우돈(홀팟): 딜/탱 48+, 힐 47+
+가라앉은 사원: 딜/탱 52+, 힐 51+
+
+[검은바위]
+나락(퀘/인센/금고): 딜/탱 54+, 힐 53+
+나락(릿산 직팟): 딜/탱 56+, 힐 55+
+첨탑 하층: 딜/탱 59+, 힐 58+
+
+[혈투의 전장]
+1번방(알진방): 딜/탱 59+, 힐 58+
+2번방(공물방): 딜/탱 60, 힐 59+
+3번방(왕자방): 딜/탱 60, 힐 59+
+
+[만렙 던전]
+스트라솔름: 딜/탱 60, 힐 59+
+스칼로맨스: 딜/탱 60, 힐 59+
+검은바위 첨탑 상층: 딜/탱 60, 힐 59+]]
+
+    editBox:SetText(dungeonContent)
+    editBox:SetCursorPosition(0)
+
+    -- 팝업 표시
+    frame:Show()
+    DungeonPopupFrame = frame
+
+    -- ESC 키로 닫기 위해 UISpecialFrames에 추가
+    tinsert(UISpecialFrames, "DungeonPopupFrame")
+end
+
 -- SendChatMessage 후킹 (말머리/말꼬리)
 local function HookSendChatMessage()
     SendChatMessage = function(message, chatType, language, channel)
+        -- 마부재료 명령어 확인
+        if message and (message == "!!마부" or message == "!!마부재료") then
+            ShowMabuPopup()
+            return -- 메시지를 채팅에 전송하지 않음
+        end
+
+        -- 자물쇠 명령어 확인
+        if message and (message == "!!자물쇠" or message == "!!자물쇠숙련") then
+            ShowLockPopup()
+            return -- 메시지를 채팅에 전송하지 않음
+        end
+
+        -- 연금술 숙련 명령어 확인
+        if message and message == "!!연금술숙련" then
+            ShowAlchemyPopup()
+            return -- 메시지를 채팅에 전송하지 않음
+        end
+
+        -- 요리 숙련 명령어 확인
+        if message and message == "!!요리숙련" then
+            ShowCookingPopup()
+            return -- 메시지를 채팅에 전송하지 않음
+        end
+
+        -- 낚시 숙련 명령어 확인
+        if message and message == "!!낚시숙련" then
+            ShowFishingPopup()
+            return -- 메시지를 채팅에 전송하지 않음
+        end
+
+        -- 응급치료 숙련 명령어 확인
+        if message and (message == "!!응치숙련" or message == "!!응급치료숙련") then
+            ShowFirstAidPopup()
+            return -- 메시지를 채팅에 전송하지 않음
+        end
+
+        -- 대장 숙련 명령어 확인
+        if message and message == "!!대장숙련" then
+            ShowBlacksmithPopup()
+            return -- 메시지를 채팅에 전송하지 않음
+        end
+
+        -- 기계공학 숙련 명령어 확인
+        if message and (message == "!!기공숙련" or message == "!!기계공학숙련") then
+            ShowEngineeringPopup()
+            return -- 메시지를 채팅에 전송하지 않음
+        end
+
+        -- 재봉술 숙련 명령어 확인
+        if message and (message == "!!재봉숙련" or message == "!!재봉술숙련") then
+            ShowTailoringPopup()
+            return -- 메시지를 채팅에 전송하지 않음
+        end
+
+        -- 마법부여 숙련 명령어 확인
+        if message and (message == "!!마부숙련" or message == "!!마법부여숙련") then
+            ShowEnchantingPopup()
+            return -- 메시지를 채팅에 전송하지 않음
+        end
+
+        -- 하드코어 위험지역 명령어 확인
+        if message and (message == "!!하코" or message == "!!하코위험지역" or message == "!!하드코어위험" or message == "!!하드코어위험지역") then
+            ShowHardcorePopup()
+            return -- 메시지를 채팅에 전송하지 않음
+        end
+
+        -- 인던 정보 명령어 확인
+        if message and (message == "!!인던" or message == "!!인스턴스던전" or message == "!!던전정보" or message == "!!인던정보") then
+            ShowDungeonPopup()
+            return -- 메시지를 채팅에 전송하지 않음
+        end
+
+        -- 도움말 명령어 확인
+        if message and (message == "!!와우위키" or message == "!!와우정보") then
+            print("|cFFFFFF00=== FoxChat 명령어 도움말 ===|r")
+            print("|cFF00FF00[마법부여 관련]|r")
+            print("  !!마부, !!마부재료 - 마법부여 재료 정보")
+            print("  !!마부숙련, !!마법부여숙련 - 마법부여 1~300 숙련 가이드")
+            print("|cFF00FF00[전문기술 숙련]|r")
+            print("  !!자물쇠, !!자물쇠숙련 - 도적 자물쇠 따기 숙련 가이드")
+            print("  !!연금술숙련 - 연금술 1~300 숙련 가이드")
+            print("  !!요리숙련 - 요리 1~300 숙련 가이드")
+            print("  !!낚시숙련 - 낚시 1~300 숙련 가이드")
+            print("  !!응치숙련, !!응급치료숙련 - 응급치료 1~300 숙련 가이드")
+            print("  !!대장숙련 - 대장기술 1~300 숙련 가이드")
+            print("  !!기공숙련, !!기계공학숙련 - 기계공학 1~300 숙련 가이드")
+            print("  !!재봉숙련, !!재봉술숙련 - 재봉술 1~300 숙련 가이드")
+            print("|cFF00FF00[게임 정보]|r")
+            print("  !!하코, !!하코위험지역, !!하드코어위험, !!하드코어위험지역 - 하드코어 위험 지역 정보")
+            print("  !!인던, !!인스턴스던전, !!던전정보, !!인던정보 - 적정 인던 레벨 가이드")
+            print("|cFF00FF00[도움말]|r")
+            print("  !!와우위키, !!와우정보 - 이 도움말 표시")
+            return -- 메시지를 채팅에 전송하지 않음
+        end
+
         -- 광고 메시지는 훅을 적용하지 않음
         if isAdvertisementMessage then
             originalSendChatMessage(message, chatType, language, channel)
@@ -914,10 +2453,10 @@ local function HookSendChatMessage()
 
             -- 위상 메시지가 아닌 경우에만 말머리/말꼬리 처리
             if not isPhaseMessage then
-                -- 디버그: chatType 확인
+                -- 디버그: chatType 확인 (디버그 모드일 때만)
                 if debugMode then
-                    print(string.format("[FoxChat Debug] SendChat: chatType=%s, channel=%s, message=%s",
-                        tostring(chatType), tostring(channel), tostring(message)))
+                    print(string.format("[FoxChat Debug] SendChat: chatType=%s, channel=%s",
+                        tostring(chatType), tostring(channel)))
                 end
 
                 -- 채널 그룹 결정
@@ -1828,6 +3367,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         UpdateFirstComeButton()
 
         print(L["ADDON_LOADED"])
+        print("|cFF00FF00[FoxChat]|r !!와우위키 라고 채팅창에 입력해보세요")
     elseif event == "GROUP_ROSTER_UPDATE" then
         OnGroupRosterUpdate()
     end
@@ -2610,7 +4150,7 @@ autoEventFrame:SetScript("OnEvent", function(self, event, ...)
 
         -- 디버그 메시지
         if FoxChatDB and FoxChatDB.autoTrade then
-            DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 거래 시작 - 상대: " .. (tradePartnerName or "알 수 없음"))
+            --             -- DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 거래 시작 - 상대: " .. (tradePartnerName or "알 수 없음")) -- 디버그용 주석 처리
         end
 
         -- 거래 시작 시 0.5초 후 초기 백업 (거래창 로드 대기)
@@ -2640,11 +4180,11 @@ autoEventFrame:SetScript("OnEvent", function(self, event, ...)
             end
         end
 
-        -- 디버그 메시지
-        if FoxChatDB and FoxChatDB.autoTrade then
-            DEFAULT_CHAT_FRAME:AddMessage(string.format("|cFFFF7D0A[FoxChat]|r 수락 상태 - Player: %d, Target: %d",
-                arg1 or 0, arg2 or 0))
-        end
+        -- 디버그 메시지 주석 처리
+        -- if FoxChatDB and FoxChatDB.autoTrade then
+        --     DEFAULT_CHAT_FRAME:AddMessage(string.format("|cFFFF7D0A[FoxChat]|r 수락 상태 - Player: %d, Target: %d",
+        --         arg1 or 0, arg2 or 0))
+        -- end
 
         -- 한쪽이라도 수락하면 데이터 스냅샷 및 백업 (WoW Classic 특성)
         if tradePlayerAccepted or tradeTargetAccepted then
@@ -2672,7 +4212,7 @@ autoEventFrame:SetScript("OnEvent", function(self, event, ...)
             end
 
             if FoxChatDB and FoxChatDB.autoTrade then
-                DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 거래 성공 예정 - 데이터 스냅샷 완료")
+            --                 DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 거래 성공 예정 - 데이터 스냅샷 완료") -- 디버그용 주석 처리
             end
         end
         -- else 부분 제거: tradeWillComplete를 false로 되돌리지 않음
@@ -2681,7 +4221,7 @@ autoEventFrame:SetScript("OnEvent", function(self, event, ...)
 
         -- 양쪽 모두 골드를 올려놓았는지 확인
         if tradeSnapshot and tradeSnapshot.givenMoney > 0 and tradeSnapshot.gotMoney > 0 and tradePartnerName then
-            DEFAULT_CHAT_FRAME:AddMessage("|cFFFF0000[FoxChat]|r 양쪽 모두 골드를 올려놓아 거래 실패!")
+            --             DEFAULT_CHAT_FRAME:AddMessage("|cFFFF0000[FoxChat]|r 양쪽 모두 골드를 올려놓아 거래 실패!") -- 디버그용 주석 처리
 
             -- 거래 실패 메시지 전송
             local failMessage = string.format(
@@ -2700,26 +4240,26 @@ autoEventFrame:SetScript("OnEvent", function(self, event, ...)
                 C_Timer.After(0.2, function()
                     if targetName and msgToSend then
                         SendChatMessage(msgToSend, "WHISPER", nil, targetName)
-                        DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 거래 실패 안내 메시지 전송: " .. targetName)
+            --                         DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 거래 실패 안내 메시지 전송: " .. targetName) -- 디버그용 주석 처리
                     end
                 end)
             else
                 SendChatMessage(failMessage, "WHISPER", nil, tradePartnerName)
-                DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 거래 실패 안내 메시지 전송: " .. tradePartnerName)
+            --                 DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 거래 실패 안내 메시지 전송: " .. tradePartnerName) -- 디버그용 주석 처리
             end
         end
 
         -- 거래 취소 명시
         tradeWillComplete = false
         if FoxChatDB and FoxChatDB.autoTrade then
-            DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 거래 취소 이벤트")
+            --             -- DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 거래 취소 이벤트") -- 디버그용 주석 처리
         end
 
     elseif event == "TRADE_CLOSED" then
         -- 디버그 메시지
         if FoxChatDB and FoxChatDB.autoTrade then
-            DEFAULT_CHAT_FRAME:AddMessage(string.format("|cFFFF7D0A[FoxChat]|r 거래 종료 - 성공예정=%s, 파트너=%s",
-                tostring(tradeWillComplete), tostring(tradePartnerName)))
+            -- DEFAULT_CHAT_FRAME:AddMessage(string.format("|cFFFF7D0A[FoxChat]|r 거래 종료 - 성공예정=%s, 파트너=%s",
+            --     tostring(tradeWillComplete), tostring(tradePartnerName)))
         end
 
         -- 양쪽 모두 골드를 올려놓았는지 먼저 확인 (거래 실패 케이스)
@@ -2741,12 +4281,12 @@ autoEventFrame:SetScript("OnEvent", function(self, event, ...)
                 C_Timer.After(0.2, function()
                     if targetName and msgToSend then
                         SendChatMessage(msgToSend, "WHISPER", nil, targetName)
-                        DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 거래 실패 안내 메시지 전송: " .. targetName)
+            --                         DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 거래 실패 안내 메시지 전송: " .. targetName) -- 디버그용 주석 처리
                     end
                 end)
             else
                 SendChatMessage(failMessage, "WHISPER", nil, tradePartnerName)
-                DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 거래 실패 안내 메시지 전송: " .. tradePartnerName)
+            --                 DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 거래 실패 안내 메시지 전송: " .. tradePartnerName) -- 디버그용 주석 처리
             end
 
             -- 상태 초기화하고 종료
@@ -2768,7 +4308,7 @@ autoEventFrame:SetScript("OnEvent", function(self, event, ...)
 
             -- 디버그 메시지는 토글
             if FoxChatDB and FoxChatDB.autoTrade then
-                DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 거래 성공!")
+            --                 DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 거래 성공!") -- 디버그용 주석 처리
                 if tradeMessage then
                     DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 전송 예정 메시지: " .. tradeMessage)
                 else
@@ -2820,9 +4360,9 @@ autoEventFrame:SetScript("OnEvent", function(self, event, ...)
         else
             if FoxChatDB and FoxChatDB.autoTrade then
                 if not tradeWillComplete then
-                    DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 거래 취소 또는 실패")
+            --                     -- DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 거래 취소 또는 실패") -- 디버그용 주석 처리
                 elseif not tradePartnerName then
-                    DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 상대 이름 식별 실패")
+                    -- DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r 상대 이름 식별 실패")
                 end
             end
         end
@@ -2864,7 +4404,7 @@ autoEventFrame:SetScript("OnEvent", function(self, event, ...)
                     SendChatMessage(tradeMessage, "WHISPER", nil, tradePartnerName)
                     lastTradeSentTime = GetTime()  -- 전송 시간 기록
                     if FoxChatDB and FoxChatDB.autoTrade then
-                        DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r ✓ 거래 완료 - 귓속말 전송: " .. tradePartnerName)
+                        -- DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r ✓ 거래 완료 - 귓속말 전송: " .. tradePartnerName)
                     end
                 end
                 -- 사용 후 초기화
@@ -2881,7 +4421,7 @@ autoEventFrame:SetScript("OnEvent", function(self, event, ...)
                 SendChatMessage(lastTradeMessage, "WHISPER", nil, lastTradePartnerName)
                 lastTradeSentTime = GetTime()  -- 전송 시간 기록
                 if FoxChatDB and FoxChatDB.autoTrade then
-                    DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r ✓ 거래 완료 - 귓속말 전송: " .. lastTradePartnerName)
+                    -- DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7D0A[FoxChat]|r ✓ 거래 완료 - 귓속말 전송: " .. lastTradePartnerName)
                 end
                 -- 백업 정보 초기화
                 lastTradePartnerName = nil

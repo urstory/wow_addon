@@ -173,7 +173,7 @@ f:SetScript("OnEvent", function(self, event, msg, sender, language, channelStrin
             C_Timer.After(2, function()
                 CL:InitConfig()
                 CL:CleanOldLogs()
-                print("|cFF00FF00[FoxChat]|r 채팅 로그 모듈 준비 완료")
+                -- print("|cFF00FF00[FoxChat]|r 채팅 로그 모듈 준비 완료") -- 디버그용 주석 처리
             end)
         elseif event == "ADDON_LOADED" and msg == "FoxChat" then
             -- 애드온 로드 시 설정 초기화
@@ -277,9 +277,9 @@ end
 function CL:SetEnabled(enabled)
     FoxChatDB.chatLogConfig.enabled = not not enabled
     if enabled then
-        print("|cFF00FF00[FoxChat]|r 채팅 로그 기록 시작")
+        -- print("|cFF00FF00[FoxChat]|r 채팅 로그 기록 시작") -- 디버그용 주석 처리
     else
-        print("|cFFFF0000[FoxChat]|r 채팅 로그 기록 중지")
+        -- print("|cFFFF0000[FoxChat]|r 채팅 로그 기록 중지") -- 디버그용 주석 처리
     end
 end
 
@@ -406,12 +406,12 @@ end
 -- 로거 활성화/비활성화
 function CL:Enable()
     FoxChatDB.chatLogConfig.enabled = true
-    print("|cFF00FF00[FoxChat]|r 채팅로그 기록을 시작합니다")
+    -- print("|cFF00FF00[FoxChat]|r 채팅로그 기록을 시작합니다") -- 디버그용 주석 처리
 end
 
 function CL:Disable()
     FoxChatDB.chatLogConfig.enabled = false
-    print("|cFF00FF00[FoxChat]|r 채팅로그 기록을 중지합니다")
+    -- print("|cFF00FF00[FoxChat]|r 채팅로그 기록을 중지합니다") -- 디버그용 주석 처리
 end
 
 -- UI용 헬퍼 메서드
@@ -791,8 +791,8 @@ end
 C_Timer.After(1, function()
     CL:InitConfig()
     if FoxChatDB.chatLogConfig.enabled then
-        print("|cFF00FF00[FoxChat]|r 채팅 로그 모듈 활성화 (/fclog help)")
+        -- print("|cFF00FF00[FoxChat]|r 채팅 로그 모듈 활성화 (/fclog help)") -- 디버그용 주석 처리
     else
-        print("|cFFFFFF00[FoxChat]|r 채팅 로그 비활성화 상태 (/fclog enable로 시작)")
+        -- print("|cFFFFFF00[FoxChat]|r 채팅 로그 비활성화 상태 (/fclog enable로 시작)") -- 디버그용 주석 처리
     end
 end)

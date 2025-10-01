@@ -74,7 +74,7 @@ local dataObj = {
 -- 미니맵 버튼 초기화
 local function InitializeMinimapButton()
     if addon.minimapButton then
-        addon:Print("미니맵 버튼이 이미 존재합니다.")
+        -- addon:Print("미니맵 버튼이 이미 존재합니다.") -- 디버그용 주석 처리
         return
     end
     -- 기본 미니맵 버튼 생성 (LibStub 체크 제거)
@@ -247,7 +247,7 @@ local function InitializeMinimapButton()
         end
         
     addon.minimapButton = button
-    addon:Print("미니맵 버튼이 생성되었습니다.")
+    -- addon:Print("미니맵 버튼이 생성되었습니다.") -- 디버그용 주석 처리
 end
 
 -- 옵션 메뉴
@@ -272,7 +272,7 @@ function addon:ShowOptionsMenu(anchor)
             notCheckable = true,
             func = function()
                 addon:StartSync()
-                addon:Print("동기화를 시작합니다...")
+                -- addon:Print("동기화를 시작합니다...") -- 디버그용 주석 처리
             end,
         },
         {
@@ -318,9 +318,9 @@ function addon:ShowOptionsMenu(anchor)
             func = function()
                 addon.db.settings.sync.autoSync = not addon.db.settings.sync.autoSync
                 if addon.db.settings.sync.autoSync then
-                    addon:Print("자동 동기화가 활성화되었습니다.")
+                    -- addon:Print("자동 동기화가 활성화되었습니다.") -- 디버그용 주석 처리
                 else
-                    addon:Print("자동 동기화가 비활성화되었습니다.")
+                    -- addon:Print("자동 동기화가 비활성화되었습니다.") -- 디버그용 주석 처리
                 end
             end,
         },
@@ -374,13 +374,13 @@ SlashCmdList["FOXGUILDCAL"] = function(msg)
             addon:Print("미니맵 버튼 잠금이 해제되었습니다.")
         end
     elseif cmd == "sync" then
-        addon:Print("동기화를 시작합니다...")
+        -- addon:Print("동기화를 시작합니다...") -- 디버그용 주석 처리
         addon:StartSync(true)  -- true는 수동 동기화를 의미
     elseif cmd == "metrics" or cmd == "stats" then
         -- 동기화 메트릭스 표시
         if addon.GetSyncMetrics then
             local metrics = addon:GetSyncMetrics()
-            addon:Print("=== 동기화 통계 ===")
+            -- addon:Print("=== 동기화 통계 ===") -- 디버그용 주석 처리
             print(string.format("  성공률: %.1f%%", metrics.successRate * 100))
             print(string.format("  평균 동기화 시간: %.1f초", metrics.averageSyncTime))
             print(string.format("  총 동기화 횟수: %d", metrics.totalSyncs))
@@ -395,7 +395,7 @@ SlashCmdList["FOXGUILDCAL"] = function(msg)
                 end
             end
         else
-            addon:Print("동기화 메트릭스를 사용할 수 없습니다.")
+            -- addon:Print("동기화 메트릭스를 사용할 수 없습니다.") -- 디버그용 주석 처리
         end
     elseif cmd == "help" then
         addon:Print("명령어:")

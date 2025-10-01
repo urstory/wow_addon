@@ -575,10 +575,10 @@ initFrame:RegisterEvent("ADDON_LOADED")
 initFrame:SetScript("OnEvent", function(self, event, ...)
     if event == "PLAYER_LOGIN" then
         C_Timer.After(1, function()
-            print("|cFF00FF00[FoxChat]|r 주사위 집계 모듈 준비")
-            print("  - 활성화: " .. ((FoxChatDB and FoxChatDB.rollTrackerEnabled) and "|cFF00FF00ON|r" or "|cFFFF0000OFF|r"))
-            print("  - 사용법: /roll 또는 /random 1 100")
-            print("  - 디버그: /fcroll debug on")
+            -- print("|cFF00FF00[FoxChat]|r 주사위 집계 모듈 준비") -- 디버그용 주석 처리
+            -- print("  - 활성화: " .. ((FoxChatDB and FoxChatDB.rollTrackerEnabled) and "|cFF00FF00ON|r" or "|cFFFF0000OFF|r"))
+            -- print("  - 사용법: /roll 또는 /random 1 100")
+            -- print("  - 디버그: /fcroll debug on")
         end)
     elseif event == "ADDON_LOADED" and ... == addonName then
         -- 모듈이 로드될 때 초기화
