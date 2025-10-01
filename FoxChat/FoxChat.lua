@@ -515,25 +515,29 @@ local function HighlightKeywords(message, channelGroup, author)
     local originalMsgContent = msgContent  -- 디버그용
 
     if FoxChatDB.prefixSuffixEnabled then
-        local myPrefix = FoxChatDB.prefix or ""
-        local mySuffix = FoxChatDB.suffix or ""
-
-        -- 메시지 시작 부분이 말머리와 일치하면 제거 (공백 포함하여 비교)
-        if myPrefix ~= "" then
-            -- 메시지 앞의 공백 제거
-            local trimmedMsg = string.gsub(msgContentForCheck, "^%s*", "")
-            -- 말머리와 정확히 일치하는지 확인
-            if string.sub(trimmedMsg, 1, string.len(myPrefix)) == myPrefix then
-                msgContentForCheck = string.sub(trimmedMsg, string.len(myPrefix) + 1)
-                -- 말머리 뒤의 공백도 제거
-                msgContentForCheck = string.gsub(msgContentForCheck, "^%s*", "")
-
-                if debugMode then
+        -- 모든 채널의 말머리를 확인해서 제거 (필터링을 위해)
+        local prefixRemoved = false
+        if FoxChatDB.channelPrefixSuffix then
+            for _, channelData in pairs(FoxChatDB.channelPrefixSuffix) do
+                local myPrefix = channelData.prefix or ""
+                if myPrefix ~= "" and not prefixRemoved then
+                    -- 메시지 앞의 공백 제거
+                    local trimmedMsg = string.gsub(msgContentForCheck, "^%s*", "")
+                    -- 말머리와 정확히 일치하는지 확인
+                    if string.sub(trimmedMsg, 1, string.len(myPrefix)) == myPrefix then
+                        msgContentForCheck = string.sub(trimmedMsg, string.len(myPrefix) + 1)
+                        -- 말머리 뒤의 공백도 제거
+                        msgContentForCheck = string.gsub(msgContentForCheck, "^%s*", "")
+                        prefixRemoved = true
+                        if debugMode then
+                        end
+                    end
                 end
             end
         end
 
         -- 메시지 끝 부분이 말꼬리와 일치하면 제거 (공백 포함하여 비교)
+        local mySuffix = FoxChatDB.suffix or ""
         if mySuffix ~= "" then
             -- 메시지 끝의 공백 제거
             local trimmedMsg = string.gsub(msgContentForCheck, "%s*$", "")
@@ -910,22 +914,67 @@ local function HookSendChatMessage()
 
             -- 위상 메시지가 아닌 경우에만 말머리/말꼬리 처리
             if not isPhaseMessage then
-                -- 채널 타입 확인
-                local channelKey = chatType
-                if chatType == "CHANNEL" then
-                    channelKey = "CHANNEL"
-                elseif chatType == "INSTANCE_CHAT" then
-                    channelKey = "INSTANCE_CHAT"
+                -- 디버그: chatType 확인
+                if debugMode then
+                    print(string.format("[FoxChat Debug] SendChat: chatType=%s, channel=%s, message=%s",
+                        tostring(chatType), tostring(channel), tostring(message)))
                 end
 
-                -- 해당 채널에 말머리/말꼬리 적용 여부 확인
-                if FoxChatDB.prefixSuffixChannels and FoxChatDB.prefixSuffixChannels[channelKey] then
-                    local prefix = FoxChatDB.prefix or ""
+                -- 채널 그룹 결정
+                local channelGroup = nil
+                if chatType == "SAY" then
+                    channelGroup = "SAY"        -- 일반 대화
+                elseif chatType == "YELL" then
+                    channelGroup = "YELL"       -- 외치기
+                elseif chatType == "CHANNEL" then
+                    -- 채널 번호로 구분 (channel 파라미터 사용)
+                    if channel then
+                        local channelName = select(2, GetChannelName(channel))
+                        if debugMode then
+                            print(string.format("[FoxChat Debug] CHANNEL: num=%s, name=%s", tostring(channel), tostring(channelName)))
+                        end
+
+                        -- 공개 채널 체크 (일반, 공개, General)
+                        if channelName and (string.find(channelName, "공개") or string.find(channelName, "일반") or string.find(channelName, "General")) then
+                            channelGroup = "YELL"   -- 공개 채널도 YELL 그룹으로 처리
+                        elseif channelName and (string.find(channelName, "파티찾기") or string.find(channelName, "LookingForGroup") or string.find(channelName, "LFG")) then
+                            channelGroup = "LFG"    -- 파티찾기 채널
+                        elseif channelName and (string.find(channelName, "거래") or string.find(channelName, "Trade")) then
+                            channelGroup = "TRADE"  -- 거래 채널
+                        end
+                    end
+                elseif chatType == "GUILD" or chatType == "OFFICER" then
+                    channelGroup = "GUILD"      -- 길드
+                elseif chatType == "PARTY" or chatType == "RAID" or chatType == "INSTANCE_CHAT" or chatType == "RAID_WARNING" then
+                    channelGroup = "GROUP"      -- 파티/공격대
+                elseif chatType == "WHISPER" or chatType == "WHISPER_INFORM" then
+                    channelGroup = "WHISPER"    -- 귓속말
+                end
+
+                if channelGroup then
+                    -- 채널별 말머리 가져오기
+                    local prefix = ""
+                    if FoxChatDB.channelPrefixSuffix and FoxChatDB.channelPrefixSuffix[channelGroup] then
+                        prefix = FoxChatDB.channelPrefixSuffix[channelGroup].prefix or ""
+                    end
+
+                    -- 공통 말꼬리
                     local suffix = FoxChatDB.suffix or ""
+
+                    -- 디버그: 말머리/말꼬리 적용 확인
+                    if debugMode then
+                        print(string.format("[FoxChat Debug] channelGroup=%s, prefix='%s', suffix='%s'",
+                            tostring(channelGroup), tostring(prefix), tostring(suffix)))
+                    end
 
                     -- 말머리와 말꼬리 추가
                     if prefix ~= "" or suffix ~= "" then
                         message = prefix .. message .. suffix
+                    end
+                else
+                    -- 디버그: channelGroup이 없는 경우
+                    if debugMode then
+                        print(string.format("[FoxChat Debug] No channelGroup for chatType=%s", tostring(chatType)))
                     end
                 end
             end

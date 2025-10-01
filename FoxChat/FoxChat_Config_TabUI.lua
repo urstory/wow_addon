@@ -1398,7 +1398,8 @@ local tabContents = {}
 -- EditBox 변수들 (각 탭에서 사용)
 local keywordsEditBox = nil
 local ignoreKeywordsEditBox = nil
-local prefixEditBox = nil
+-- 말머리/말꼬리 입력 필드 (이제 채널별로 관리됨)
+local channelPrefixEditBoxes = {}
 local suffixEditBox = nil
 local adMessageEditBox = nil
 
@@ -1607,8 +1608,8 @@ end
 -- 탭 컨텐츠 프레임 생성 함수
 local function CreateTabContent(parent, index)
     local frame = CreateFrame("Frame", "FoxChatTabContent"..index, parent)
-    frame:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, -95)
-    frame:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -20, 55)
+    frame:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, -95)
+    frame:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -10, 55)
     frame:Hide()  -- 기본적으로 숨김
 
     -- 배경 (선택사항)
@@ -2132,6 +2133,18 @@ function FoxChat:ShowConfig()
     -- =============================================
     local tab2 = tabContents[2]
 
+    -- 채널별 말머리 입력창들을 저장할 테이블
+    local prefixEditBoxes = {}
+    local channelLabels = {
+        {"일반 말머리", "SAY"},           -- /say 일반 대화
+        {"공개 말머리", "YELL"},          -- /yell 외치기
+        {"파티찾기 말머리", "LFG"},       -- 파티찾기 채널
+        {"거래 말머리", "TRADE"},         -- 거래 채널
+        {"길드 말머리", "GUILD"},         -- 길드 채팅
+        {"파티+공대 말머리", "GROUP"},    -- 파티/공격대
+        {"귓속말 말머리", "WHISPER"}      -- 귓속말
+    }
+
     -- 말머리/말꼬리 활성화 체크박스
     local prefixSuffixEnabledCheckbox = CreateFrame("CheckButton", nil, tab2)
     prefixSuffixEnabledCheckbox:SetSize(24, 24)
@@ -2140,97 +2153,127 @@ function FoxChat:ShowConfig()
     prefixSuffixEnabledCheckbox:SetPushedTexture("Interface\\Buttons\\UI-CheckBox-Down")
     prefixSuffixEnabledCheckbox:SetHighlightTexture("Interface\\Buttons\\UI-CheckBox-Highlight")
     prefixSuffixEnabledCheckbox:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
-    prefixSuffixEnabledCheckbox:SetChecked(FoxChatDB and FoxChatDB.prefixSuffixEnabled)
+    prefixSuffixEnabledCheckbox:SetChecked(FoxChatDB and FoxChatDB.prefixSuffixEnabled == true)
 
     local prefixSuffixEnabledLabel = tab2:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     prefixSuffixEnabledLabel:SetPoint("LEFT", prefixSuffixEnabledCheckbox, "RIGHT", 5, 0)
-    prefixSuffixEnabledLabel:SetText(L["PREFIX_SUFFIX_ENABLE"])
+    prefixSuffixEnabledLabel:SetText("말머리/말꼬리 사용")
 
     prefixSuffixEnabledCheckbox:SetScript("OnClick", function(self)
         if FoxChatDB then
-            FoxChatDB.prefixSuffixEnabled = self:GetChecked()
+            local isChecked = self:GetChecked()
+            -- WoW Classic에서 GetChecked()는 1 또는 nil을 반환할 수 있음
+            FoxChatDB.prefixSuffixEnabled = (isChecked == 1 or isChecked == true) and true or false
+
+            -- 항상 출력 (디버그 확인용)
+            print(string.format("|cFFFF7D0A[FoxChat]|r 말머리/말꼬리 설정 변경: 체크값=%s, 저장값=%s",
+                tostring(isChecked), tostring(FoxChatDB.prefixSuffixEnabled)))
         end
     end)
 
     -- 설명 텍스트
     local prefixSuffixHelp = tab2:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    prefixSuffixHelp:SetPoint("TOPLEFT", prefixSuffixEnabledCheckbox, "BOTTOMLEFT", 0, -10)
-    prefixSuffixHelp:SetText(L["PREFIX_SUFFIX_HELP"])
+    prefixSuffixHelp:SetPoint("TOPLEFT", prefixSuffixEnabledCheckbox, "BOTTOMLEFT", 0, -5)
+    prefixSuffixHelp:SetText("내 메시지 앞뒤에 자동으로 텍스트를 추가합니다.")
 
     -- 구분선
+    local separator1 = CreateSeparator(tab2)
+    separator1:SetPoint("TOPLEFT", prefixSuffixHelp, "BOTTOMLEFT", -10, -10)
+    separator1:SetPoint("RIGHT", tab2, "RIGHT", -10, 0)
+
+    -- 각 채널별 말머리 입력 필드 생성
+    local yOffset = -15
+    for i, channelInfo in ipairs(channelLabels) do
+        local label = tab2:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        label:SetPoint("TOPLEFT", separator1, "BOTTOMLEFT", 10, yOffset)
+        label:SetText(channelInfo[1] .. ":")
+        label:SetWidth(120)
+        label:SetJustifyH("LEFT")
+        local editBg = CreateFrame("Frame", nil, tab2, "BackdropTemplate")
+        editBg:SetSize(430, 22)
+        editBg:SetPoint("LEFT", label, "RIGHT", 10, 0)
+        editBg:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 16, edgeSize = 8,
+            insets = { left = 2, right = 2, top = 2, bottom = 2 }
+        })
+        editBg:SetBackdropColor(0, 0, 0, 0.8)
+
+        local editBox = CreateFrame("EditBox", nil, editBg)
+        editBox:SetSize(420, 18)
+        editBox:SetPoint("LEFT", 5, 0)
+        editBox:SetAutoFocus(false)
+        editBox:SetMaxLetters(50)
+        editBox:SetFontObject(GameFontHighlight)
+
+        -- DB에서 값 로드
+        if FoxChatDB and FoxChatDB.channelPrefixSuffix and FoxChatDB.channelPrefixSuffix[channelInfo[2]] then
+            editBox:SetText(FoxChatDB.channelPrefixSuffix[channelInfo[2]].prefix or "")
+        else
+            editBox:SetText("")
+        end
+
+        editBox:SetScript("OnTextChanged", function(self)
+            if FoxChatDB then
+                if not FoxChatDB.channelPrefixSuffix then
+                    FoxChatDB.channelPrefixSuffix = {}
+                end
+                if not FoxChatDB.channelPrefixSuffix[channelInfo[2]] then
+                    FoxChatDB.channelPrefixSuffix[channelInfo[2]] = {}
+                end
+                FoxChatDB.channelPrefixSuffix[channelInfo[2]].prefix = self:GetText()
+            end
+        end)
+
+        editBox:SetScript("OnEscapePressed", function(self)
+            self:ClearFocus()
+        end)
+
+        prefixEditBoxes[channelInfo[2]] = editBox
+        yOffset = yOffset - 30
+    end
+
+    -- 구분선 2
     local separator2 = CreateSeparator(tab2)
-    separator2:SetPoint("TOPLEFT", prefixSuffixHelp, "BOTTOMLEFT", -10, -10)
+    separator2:SetPoint("TOPLEFT", separator1, "BOTTOMLEFT", 0, yOffset - 10)
     separator2:SetPoint("RIGHT", tab2, "RIGHT", -10, 0)
 
-    -- 말머리 입력
-    local prefixLabel = tab2:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    prefixLabel:SetPoint("TOPLEFT", separator2, "BOTTOMLEFT", 10, -15)
-    prefixLabel:SetText(L["PREFIX_LABEL"])
-
-    local prefixBackground = CreateFrame("Frame", nil, tab2, "BackdropTemplate")
-    prefixBackground:SetSize(250, 30)
-    prefixBackground:SetPoint("LEFT", prefixLabel, "RIGHT", 10, 0)
-    prefixBackground:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 8,
-        insets = { left = 2, right = 2, top = 2, bottom = 2 }
-    })
-    prefixBackground:SetBackdropColor(0, 0, 0, 0.8)
-
-    prefixEditBox = CreateFrame("EditBox", nil, prefixBackground)
-    prefixEditBox:SetSize(240, 25)
-    prefixEditBox:SetPoint("LEFT", 5, 0)
-    prefixEditBox:SetAutoFocus(false)
-    prefixEditBox:SetMaxLetters(50)
-    prefixEditBox:SetFontObject(GameFontHighlight)
-    prefixEditBox:SetText((FoxChatDB and FoxChatDB.prefix) or "")
-
-    prefixEditBox:SetScript("OnTextChanged", function(self)
-        if FoxChatDB then
-            FoxChatDB.prefix = self:GetText()
-        end
-        -- 광고 탭의 말머리/말꼬리 바이트 수 업데이트
-        if configFrame and configFrame.tab3 and configFrame.tab3.UpdatePrefixSuffixBytes then
-            configFrame.tab3.UpdatePrefixSuffixBytes()
-        end
-    end)
-
-    prefixEditBox:SetScript("OnEscapePressed", function(self)
-        self:ClearFocus()
-    end)
-
-    -- 말꼬리 입력
+    -- 공통 말꼬리 입력
     local suffixLabel = tab2:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    suffixLabel:SetPoint("TOPLEFT", prefixLabel, "BOTTOMLEFT", 0, -15)
-    suffixLabel:SetText(L["SUFFIX_LABEL"])
+    suffixLabel:SetPoint("TOPLEFT", separator2, "BOTTOMLEFT", 10, -15)
+    suffixLabel:SetText("공통 말꼬리:")
+    suffixLabel:SetWidth(120)
+    suffixLabel:SetJustifyH("LEFT")
 
-    local suffixBackground = CreateFrame("Frame", nil, tab2, "BackdropTemplate")
-    suffixBackground:SetSize(250, 30)
-    suffixBackground:SetPoint("LEFT", suffixLabel, "RIGHT", 10, 0)
-    suffixBackground:SetBackdrop({
+    local suffixBg = CreateFrame("Frame", nil, tab2, "BackdropTemplate")
+    suffixBg:SetSize(430, 22)
+    suffixBg:SetPoint("LEFT", suffixLabel, "RIGHT", 10, 0)
+    suffixBg:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
         tile = true, tileSize = 16, edgeSize = 8,
         insets = { left = 2, right = 2, top = 2, bottom = 2 }
     })
-    suffixBackground:SetBackdropColor(0, 0, 0, 0.8)
+    suffixBg:SetBackdropColor(0, 0, 0, 0.8)
 
-    suffixEditBox = CreateFrame("EditBox", nil, suffixBackground)
-    suffixEditBox:SetSize(240, 25)
+    local suffixEditBox = CreateFrame("EditBox", nil, suffixBg)
+    suffixEditBox:SetSize(420, 18)
     suffixEditBox:SetPoint("LEFT", 5, 0)
     suffixEditBox:SetAutoFocus(false)
     suffixEditBox:SetMaxLetters(50)
     suffixEditBox:SetFontObject(GameFontHighlight)
-    suffixEditBox:SetText((FoxChatDB and FoxChatDB.suffix) or "")
+
+    -- DB에서 공통 말꼬리 값 로드
+    if FoxChatDB and FoxChatDB.suffix then
+        suffixEditBox:SetText(FoxChatDB.suffix or "")
+    else
+        suffixEditBox:SetText("")
+    end
 
     suffixEditBox:SetScript("OnTextChanged", function(self)
         if FoxChatDB then
             FoxChatDB.suffix = self:GetText()
-        end
-        -- 광고 탭의 말머리/말꼬리 바이트 수 업데이트
-        if configFrame and configFrame.tab3 and configFrame.tab3.UpdatePrefixSuffixBytes then
-            configFrame.tab3.UpdatePrefixSuffixBytes()
         end
     end)
 
@@ -2238,96 +2281,24 @@ function FoxChat:ShowConfig()
         self:ClearFocus()
     end)
 
-    -- 말머리/말꼬리 적용 채널
-    local prefixChannelsLabel = tab2:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    prefixChannelsLabel:SetPoint("TOPLEFT", suffixLabel, "BOTTOMLEFT", 0, -20)
-    prefixChannelsLabel:SetText(L["PREFIX_SUFFIX_CHANNELS"])
+    -- 구분선 3
+    local separator3 = CreateSeparator(tab2)
+    separator3:SetPoint("TOPLEFT", suffixBg, "BOTTOMLEFT", -10, -15)
+    separator3:SetPoint("RIGHT", tab2, "RIGHT", -10, 0)
 
-    -- 채널 체크박스 옵션들
-    local prefixChannelOptions = {
-        {key = "SAY", text = L["CHANNEL_SAY"], x = 0, y = 0},
-        {key = "YELL", text = L["CHANNEL_YELL"], x = 140, y = 0},
-        {key = "PARTY", text = L["CHANNEL_PARTY"], x = 280, y = 0},
-        {key = "GUILD", text = L["CHANNEL_GUILD"], x = 420, y = 0},
-        {key = "RAID", text = L["CHANNEL_RAID"], x = 0, y = -30},
-        {key = "INSTANCE_CHAT", text = L["CHANNEL_INSTANCE"], x = 140, y = -30},
-        {key = "WHISPER", text = L["CHANNEL_WHISPER"], x = 280, y = -30},
-        {key = "CHANNEL", text = L["CHANNEL_GENERAL"], x = 420, y = -30},
-    }
+    -- 설명 텍스트
+    local noteLabel = tab2:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    noteLabel:SetPoint("TOPLEFT", separator3, "BOTTOMLEFT", 10, -10)
+    noteLabel:SetText("채널별 말머리는 각각 다르게 설정할 수 있고, 말꼬리는 모든 채널에 공통으로 적용됩니다.")
+    noteLabel:SetJustifyH("LEFT")
 
-    local prefixChannelCheckboxes = {}
-    for _, channel in ipairs(prefixChannelOptions) do
-        local checkbox = CreateFrame("CheckButton", nil, tab2)
-        checkbox:SetSize(20, 20)
-        checkbox:SetPoint("TOPLEFT", prefixChannelsLabel, "BOTTOMLEFT", channel.x, channel.y - 15)
-        checkbox:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
-        checkbox:SetPushedTexture("Interface\\Buttons\\UI-CheckBox-Down")
-        checkbox:SetHighlightTexture("Interface\\Buttons\\UI-CheckBox-Highlight")
-        checkbox:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
+    local noteLabel2 = tab2:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    noteLabel2:SetPoint("TOPLEFT", noteLabel, "BOTTOMLEFT", 0, -5)
+    noteLabel2:SetText("|cFFFF7F50※ 광고(공개+거래)시에는 말머리/말꼬리가 적용되지 않습니다|r")
+    noteLabel2:SetJustifyH("LEFT")
 
-        -- 체크 상태 설정
-        checkbox:SetChecked(FoxChatDB and FoxChatDB.prefixSuffixChannels and FoxChatDB.prefixSuffixChannels[channel.key])
-
-        local label = tab2:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        label:SetPoint("LEFT", checkbox, "RIGHT", 2, 0)
-        label:SetText(channel.text)
-
-        checkbox:SetScript("OnClick", function(self)
-            if FoxChatDB then
-                if not FoxChatDB.prefixSuffixChannels then
-                    FoxChatDB.prefixSuffixChannels = {}
-                end
-                FoxChatDB.prefixSuffixChannels[channel.key] = self:GetChecked()
-            end
-        end)
-
-        prefixChannelCheckboxes[channel.key] = checkbox
-    end
-
-    -- 예시 텍스트
-    local exampleLabel = tab2:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    exampleLabel:SetPoint("TOPLEFT", prefixChannelsLabel, "BOTTOMLEFT", 0, -70)
-    exampleLabel:SetText("예시:")
-
-    local exampleText = tab2:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    exampleText:SetPoint("LEFT", exampleLabel, "RIGHT", 10, 0)
-
-    -- 예시 텍스트 업데이트 함수
-    local function UpdateExampleText()
-        local prefix = (FoxChatDB and FoxChatDB.prefix) or ""
-        local suffix = (FoxChatDB and FoxChatDB.suffix) or ""
-        local example = prefix .. "안녕하세요!" .. suffix
-        exampleText:SetText(example)
-    end
-
-    -- 말머리/말꼬리 변경 시 예시 업데이트 (위에서 이미 설정되어 있으므로 함수만 호출)
-    local function OnPrefixSuffixChanged()
-        UpdateExampleText()
-        -- 광고 탭의 말머리/말꼬리 바이트 수 업데이트
-        if configFrame and configFrame.tab3 and configFrame.tab3.UpdatePrefixSuffixBytes then
-            configFrame.tab3.UpdatePrefixSuffixBytes()
-        end
-    end
-
-    -- 기존 OnTextChanged에 추가
-    local oldPrefixHandler = prefixEditBox:GetScript("OnTextChanged")
-    prefixEditBox:SetScript("OnTextChanged", function(self)
-        if oldPrefixHandler then oldPrefixHandler(self) end
-        OnPrefixSuffixChanged()
-    end)
-
-    local oldSuffixHandler = suffixEditBox:GetScript("OnTextChanged")
-    suffixEditBox:SetScript("OnTextChanged", function(self)
-        if oldSuffixHandler then oldSuffixHandler(self) end
-        OnPrefixSuffixChanged()
-    end)
-
-    -- 초기 예시 텍스트 설정
-    UpdateExampleText()
-
-    -- 팁 텍스트
     local tipLabel = tab2:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    tipLabel:SetPoint("TOPLEFT", exampleLabel, "BOTTOMLEFT", 0, -20)
+    tipLabel:SetPoint("TOPLEFT", noteLabel2, "BOTTOMLEFT", 0, -5)
     tipLabel:SetText("|cFFFFFF00팁:|r 위상 메시지(일위상, 이위상, 삼위상)는 자동으로 제외됩니다.")
     tipLabel:SetJustifyH("LEFT")
 
@@ -2353,7 +2324,16 @@ function FoxChat:ShowConfig()
 
     -- 말머리/말꼬리 바이트 수 계산 및 표시 함수
     local function UpdatePrefixSuffixBytes()
-        local prefix = (FoxChatDB and FoxChatDB.prefix) or ""
+        -- 광고는 파티찾기(LFG) 또는 거래(TRADE) 채널의 말머리 사용 (광고 채널 설정에 따라)
+        local adChannel = (FoxChatDB and FoxChatDB.adChannel) or "파티찾기"
+        local prefix = ""
+        if FoxChatDB and FoxChatDB.channelPrefixSuffix then
+            if adChannel == "파티찾기" and FoxChatDB.channelPrefixSuffix.LFG then
+                prefix = FoxChatDB.channelPrefixSuffix.LFG.prefix or ""
+            elseif adChannel == "거래" and FoxChatDB.channelPrefixSuffix.TRADE then
+                prefix = FoxChatDB.channelPrefixSuffix.TRADE.prefix or ""
+            end
+        end
         local suffix = (FoxChatDB and FoxChatDB.suffix) or ""
         local prefixBytes = GetUTF8ByteLength(prefix)
         local suffixBytes = GetUTF8ByteLength(suffix)
@@ -3009,9 +2989,17 @@ function FoxChat:ShowConfig()
                 elseif currentTab == 2 then
                     -- 말머리/말꼬리 초기화
                     FoxChatDB.prefixSuffixEnabled = false
-                    FoxChatDB.prefix = ""
+                    FoxChatDB.channelPrefixSuffix = {
+                        SAY = {prefix = ""},       -- 일반 대화
+                        YELL = {prefix = ""},      -- 외치기
+                        LFG = {prefix = ""},       -- 파티찾기 채널
+                        TRADE = {prefix = ""},     -- 거래 채널
+                        GUILD = {prefix = ""},     -- 길드
+                        GROUP = {prefix = ""},     -- 파티/공대
+                        WHISPER = {prefix = ""}    -- 귓속말
+                    }
                     FoxChatDB.suffix = ""
-                    FoxChatDB.prefixChannels = {
+                    FoxChatDB.prefixSuffixChannels = {
                         SAY = true,
                         YELL = false,
                         PARTY = true,
@@ -3123,9 +3111,11 @@ function FoxChat:ShowConfig()
         end
 
         -- 탭 2 - 말머리/말꼬리 업데이트
-        if prefixEditBox then
-            prefixEditBox:SetText((FoxChatDB and FoxChatDB.prefix) or "")
+        if prefixSuffixEnabledCheckbox then
+            prefixSuffixEnabledCheckbox:SetChecked(FoxChatDB and FoxChatDB.prefixSuffixEnabled == true)
         end
+        -- 채널별 말머리 업데이트는 각 EditBox의 초기화 시점에 처리됨
+        -- 공통 말꼬리 업데이트
         if suffixEditBox then
             suffixEditBox:SetText((FoxChatDB and FoxChatDB.suffix) or "")
         end
