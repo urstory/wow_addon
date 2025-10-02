@@ -4,13 +4,17 @@
 ## Version: 1.0
 ## Notes: Chat enhancement addon with keyword highlighting and message customization
 ## Notes-koKR: 키워드 강조 및 메시지 커스터마이징 채팅 향상 애드온
-## SavedVariables: FoxChatDB
+## SavedVariables: FoxChatDB, FoxChatDB_Backup
 ## SavedVariablesPerCharacter: FoxChatCharDB
 
 Localization.lua
+FoxChat_Migration.lua
+FoxChat_ChannelFilter.lua
 FoxChat_Settings.lua
 FoxChat.lua
 FoxChatLogger.lua
 FoxChatRollTracker.lua
+FoxChat_Config_TabUI_New.lua
 FoxChat_Config_TabUI.lua
 FoxChat_Debug.lua
+FoxChat_MigrationTest.lua

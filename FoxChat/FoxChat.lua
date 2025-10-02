@@ -15,6 +15,7 @@ local defaults = {
         PUBLIC = {r = 1, g = 1, b = 0}, -- 공개: 노란색
         PARTY_RAID = {r = 0, g = 0.5, b = 1}, -- 파티/공격대: 파란색
         LFG = {r = 1, g = 0.5, b = 0}, -- 파티찾기: 주황색
+        TRADE = {r = 0.8, g = 0.4, b = 1}, -- 거래: 보라색
     },
     highlightStyle = "both", -- "bold", "color", "both"
     channelGroups = {
@@ -22,6 +23,7 @@ local defaults = {
         PUBLIC = true,
         PARTY_RAID = true,
         LFG = true,
+        TRADE = true,
     },
     prefix = "",  -- 말머리
     suffix = "",  -- 말꼬리
@@ -41,8 +43,8 @@ local defaults = {
         radius = 80,  -- 미니맵 테두리까지의 거리
     },
     toastPosition = {
-        x = 0,  -- X축 오프셋 (0 = 중앙)
-        y = -320,  -- Y축 오프셋 (기본값 -320)
+        x = 0,  -- X축 오프셋 (0 = 중앙, 좌측 = 음수, 우측 = 양수)
+        y = -300,  -- Y축 오프셋 (0 = 중앙, 위 = 음수, 아래 = 양수)
     },
     -- 광고 설정
     adEnabled = false,  -- 광고 기능 활성화
@@ -184,8 +186,8 @@ end
 
 -- 활성화된 토스트들의 위치를 재정렬
 local function RepositionToasts()
-    local xOffset = FoxChatDB.toastPosition and FoxChatDB.toastPosition.x or 0
-    local baseYOffset = FoxChatDB.toastPosition and FoxChatDB.toastPosition.y or -320
+    local xOffset = (FoxChatDB and FoxChatDB.toastPosition and FoxChatDB.toastPosition.x) or 0
+    local baseYOffset = (FoxChatDB and FoxChatDB.toastPosition and FoxChatDB.toastPosition.y) or -300
 
     for i, f in ipairs(activeToasts) do
         f:ClearAllPoints()
@@ -199,15 +201,18 @@ end
 local function GetToastFrame()
     local f = table.remove(toastPool)
     if f then
+        -- 풀에서 가져온 프레임도 현재 설정 위치로 초기 위치 설정
+        f:ClearAllPoints()
+        local xOffset = (FoxChatDB and FoxChatDB.toastPosition and FoxChatDB.toastPosition.x) or 0
+        local yOffset = (FoxChatDB and FoxChatDB.toastPosition and FoxChatDB.toastPosition.y) or -300
+        f:SetPoint("CENTER", UIParent, "CENTER", xOffset, yOffset)
         return f
     end
 
     -- 새 프레임 생성
-    local f = CreateFrame("Button", nil, UIParent, "BackdropTemplate")
+    f = CreateFrame("Button", nil, UIParent, "BackdropTemplate")
     f:SetWidth(450)  -- 고정 너비, 높이는 동적으로 조정
-    local xOffset = FoxChatDB.toastPosition and FoxChatDB.toastPosition.x or 0
-    local yOffset = FoxChatDB.toastPosition and FoxChatDB.toastPosition.y or -320
-    f:SetPoint("CENTER", UIParent, "CENTER", xOffset, yOffset)
+    -- 초기 위치는 RepositionToasts에서 설정됨
     f:SetFrameStrata("DIALOG")
     f:SetFrameLevel(100)
     f:Hide()
@@ -262,7 +267,8 @@ local function GetToastFrame()
     fadeOut:SetToAlpha(0)
     fadeOut:SetDuration(0.5)
     fadeOut:SetSmoothing("IN")
-    fadeOut:SetStartDelay(3)  -- 3초 대기 후 페이드 아웃
+    -- SetStartDelay는 ShowToast에서 동적으로 설정됨
+    f.fadeOut = fadeOut  -- 참조 저장
 
     f.animOut:SetScript("OnFinished", function(self)
         local frame = self:GetParent()
@@ -402,14 +408,41 @@ ShowToast = function(author, message, channelGroup, isTest)
     -- 모든 토스트 위치 재정렬
     RepositionToasts()
 
+    -- 토스트 표시 시간 동적 설정
+    local toastDuration = (FoxChatDB and FoxChatDB.toastDuration) or 5
+    if f.fadeOut then
+        f.fadeOut:SetStartDelay(toastDuration - 0.5)  -- 토스트 표시 시간 - 페이드 아웃 시간
+    end
+
     -- 표시
     f:Show()
     f.animIn:Play()
     f.animOut:Play()
 end
 
--- 채널 타입을 그룹으로 매핑
+-- 채널 타입을 그룹으로 매핑 (하위 호환성을 위해 유지)
 local function GetChannelGroup(channelType, channelName)
+    -- LFG 채널 디버그 출력 (비활성화 - 너무 자주 호출됨)
+    --[[
+    if channelType == "CHANNEL" and channelName then
+        print(string.format("|cFF00FFFF[GetChannelGroup DEBUG]|r Type: %s, Name: %s",
+            channelType or "nil",
+            channelName or "nil"))
+    end
+    --]]
+
+    -- 새로운 채널 필터 모듈 사용
+    if addon.ChannelFilter then
+        local result = addon.ChannelFilter:GetChannelGroup(channelType, channelName)
+        --[[
+        if channelType == "CHANNEL" and channelName then
+            print(string.format("|cFF00FFFF[GetChannelGroup DEBUG]|r ChannelFilter result: %s", result or "nil"))
+        end
+        --]]
+        return result
+    end
+
+    -- 폴백: 기존 로직
     if channelType == "GUILD" or channelType == "OFFICER" then
         return "GUILD"
     elseif channelType == "PARTY" or channelType == "PARTY_LEADER" or
@@ -436,8 +469,9 @@ local function HighlightKeywords(message, channelGroup, author)
         return message, false
     end
 
-    -- 해당 채널 그룹이 활성화되어 있는지 확인
-    if not FoxChatDB.channelGroups[channelGroup] then
+    -- 해당 채널이 활성화되어 있는지 확인
+    -- 간단하게 처리 (무한 루프 방지)
+    if not FoxChatDB.filterEnabled then
         return message, false
     end
 
@@ -490,6 +524,10 @@ local function HighlightKeywords(message, channelGroup, author)
         -- 콜론 이전 부분 (플레이어 이름 등)과 이후 부분 (실제 메시지) 분리
         prefix = string.sub(message, 1, colonPos)
         msgContent = string.sub(message, colonPos + 1)
+    else
+        -- 콜론이 없는 경우 (테스트 메시지 등) 전체를 메시지로 처리
+        msgContent = message
+        prefix = ""
     end
 
     -- 현재 플레이어 이름 가져오기 (서버명 제거)
@@ -559,6 +597,67 @@ local function HighlightKeywords(message, channelGroup, author)
     local foundKeyword = false
     local lowerMsgContent = string.lower(msgContentForCheck)
 
+    -- 채널별 키워드 가져오기 (ChannelFilter 모듈 사용)
+    -- channelGroup을 실제 채널 타입으로 변환
+    local channelType, channelName = nil, nil
+    if channelGroup == "LFG" then
+        channelType = "CHANNEL"
+        channelName = "파티찾기"
+    elseif channelGroup == "TRADE" then
+        channelType = "CHANNEL"
+        channelName = "거래"
+    elseif channelGroup == "GUILD" then
+        channelType = "GUILD"
+    elseif channelGroup == "PARTY_RAID" then
+        channelType = "PARTY"
+    elseif channelGroup == "PUBLIC" then
+        channelType = "SAY"
+    else
+        channelType = channelGroup
+    end
+
+    local keywords = {}
+    local ignoreKeywords = {}
+
+    -- 안전하게 키워드 가져오기
+    if addon.ChannelFilter then
+        keywords = addon.ChannelFilter:GetKeywords(channelType, channelName) or {}
+        ignoreKeywords = addon.ChannelFilter:GetIgnoreKeywords(channelType, channelName) or {}
+    end
+
+    -- 디버그: 키워드 개수 확인
+    local count = 0
+    for _ in pairs(keywords) do count = count + 1 end
+
+    -- 디버그 모드에서만 출력
+    if debugMode then
+        print(string.format("|cFFFF00FF[HighlightKeywords]|r 채널: %s, 키워드 %d개", channelGroup or "nil", count))
+
+        -- "수도원" 키워드 확인
+        if string.find(msgContentForCheck or message, "수도원") then
+            print("|cFF00FF00[HighlightKeywords]|r 메시지에 '수도원' 발견!")
+            local hasMonastery = false
+            for k, v in pairs(keywords) do
+                if k == "수도원" or v == "수도원" then
+                    hasMonastery = true
+                    print(string.format("|cFF00FF00[HighlightKeywords]|r 키워드 테이블에 '수도원' 있음!"))
+                    print(string.format("    키(k): [%s] (길이:%d)", k, string.len(k)))
+                    print(string.format("    값(v): [%s] (길이:%d)", v, string.len(v)))
+
+                    -- 직접 매칭 테스트
+                    local test1 = string.find(lowerMsgContent, k, 1, true)
+                    local test2 = string.find(msgContentForCheck, v, 1, true)
+                    print(string.format("    lowerMsgContent에서 k 검색: %s", test1 and "찾음" or "못찾음"))
+                    print(string.format("    msgContentForCheck에서 v 검색: %s", test2 and "찾음" or "못찾음"))
+                    break
+                end
+            end
+            if not hasMonastery then
+                print("|cFFFF0000[HighlightKeywords]|r 키워드 테이블에 '수도원' 없음!")
+            end
+        end
+    end
+
     -- 먼저 작성자가 무시 키워드와 일치하는지 확인
     local authorLower = author and string.lower(author) or ""
     -- 서버명 제거 (하이픈 뒤의 모든 내용 제거)
@@ -568,17 +667,8 @@ local function HighlightKeywords(message, channelGroup, author)
         authorClean = string.sub(authorLower, 1, hyphenPos - 1)
     end
 
-    -- 디버그: 무시 키워드 체크 전 작성자 정보 출력
-    if debugMode and author then
-    end
-
     -- 작성자 닉네임이 무시 키워드 중 하나와 일치하는지 확인
-    -- 일치하면 이 메시지는 전혀 필터링하지 않음
     for lowerIgnore, originalIgnore in pairs(ignoreKeywords) do
-        if debugMode and author then
-            if lowerIgnore == authorClean then
-            end
-        end
         if lowerIgnore == authorLower or lowerIgnore == authorClean then
             -- 닉네임이 무시 키워드와 일치하면 필터링하지 않음
             return message, false
@@ -590,45 +680,74 @@ local function HighlightKeywords(message, channelGroup, author)
         if string.find(lowerMsgContent, lowerIgnore, 1, true) then
             -- 디버그: 무시 키워드 매칭
             if debugMode then
-                print(string.format("|cFFFF00FF[FoxChat] 무시할 문구 '%s'가 발견됨. 필터링 건너뜀.|r", originalIgnore))
+                print(string.format("|cFFFF00FF[FoxChat] 무시할 문구 '%s'가 발곬됨. 필터링 건너뜀.|r", originalIgnore))
             end
             -- 메시지에 무시 키워드가 있으면 필터링하지 않음
             return message, false
         end
     end
 
+    -- 하이라이트 색상 설정
+    local color = (FoxChatDB.highlightColors and FoxChatDB.highlightColors[channelGroup]) or defaults.highlightColors[channelGroup]
+    local colorCode = string.format("|cff%02x%02x%02x",
+        math.floor(color.r * 255),
+        math.floor(color.g * 255),
+        math.floor(color.b * 255))
+
+    -- 모든 매칭된 키워드를 수집
+    local matchedKeywords = {}
     for lowerKeyword, originalKeyword in pairs(keywords) do
-        if string.find(lowerMsgContent, lowerKeyword, 1, true) then
-            -- 디버그: 키워드 매칭
-            if debugMode then
-                print(string.format("|cFF00FFFF[FoxChat] 키워드 '%s'가 메시지에서 매칭됨!|r", originalKeyword))
-            end
-            foundKeyword = true
+        -- 메시지에서 이 키워드의 모든 위치를 찾기 (첫 번째만 찾기로 단순화)
+        -- lowerKeyword가 실제로 소문자가 아닐 수 있음 (한글의 경우)
+        -- 따라서 lowerMsgContent와 원본 메시지 모두에서 찾아봄
+        local startPos, endPos = string.find(lowerMsgContent, lowerKeyword, 1, true)
 
-            -- 키워드를 하이라이트 (원본 msgContent에 적용)
-            local pattern = "(" .. string.gsub(originalKeyword, "([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1") .. ")"
-            local replacement = ""
-
-            local color = (FoxChatDB.highlightColors and FoxChatDB.highlightColors[channelGroup]) or defaults.highlightColors[channelGroup]
-            local colorCode = string.format("|cff%02x%02x%02x",
-                math.floor(color.r * 255),
-                math.floor(color.g * 255),
-                math.floor(color.b * 255))
-
-            if FoxChatDB.highlightStyle == "bold" then
-                replacement = "|cffffffff%1|r"  -- 흰색 굵은 글씨 효과
-            elseif FoxChatDB.highlightStyle == "color" then
-                replacement = colorCode .. "%1|r"
-            else -- both
-                replacement = "|cffffffff" .. colorCode .. "%1|r|r"  -- 색상 + 굵게 (흰색 레이어로 굵게 효과)
-            end
-
-            -- 대소문자 구분 없이 치환 (메시지 내용 부분만)
-            local function replacer(match)
-                return string.gsub(replacement, "%%1", match)
-            end
-            msgContent = string.gsub(msgContent, pattern, replacer)
+        -- 한글 키워드는 대소문자 변환이 안되므로 원본에서도 찾아봄
+        if not startPos then
+            startPos, endPos = string.find(msgContentForCheck, originalKeyword, 1, true)
         end
+
+        if startPos then
+            -- 실제 텍스트 추출 (msgContentForCheck에서 찾은 위치를 사용)
+            local actualKeyword = string.sub(msgContentForCheck, startPos, endPos)
+            table.insert(matchedKeywords, {
+                start = startPos,
+                finish = endPos,
+                text = actualKeyword
+            })
+            foundKeyword = true
+        end
+    end
+
+    -- 찾은 키워드들을 역순으로 정렬 (뒤에서부터 치환하기 위해)
+    table.sort(matchedKeywords, function(a, b) return a.start > b.start end)
+
+    -- 각 키워드를 하이라이트
+    -- msgContentForCheck에서 찾은 키워드를 하이라이트
+    local highlightedContent = msgContentForCheck
+    for _, match in ipairs(matchedKeywords) do
+        local beforeText = string.sub(highlightedContent, 1, match.start - 1)
+        local keywordText = match.text
+        local afterText = string.sub(highlightedContent, match.finish + 1)
+
+        local highlightedKeyword = ""
+        if FoxChatDB.highlightStyle == "bold" then
+            highlightedKeyword = "|cffffffff" .. keywordText .. "|r"
+        elseif FoxChatDB.highlightStyle == "color" then
+            highlightedKeyword = colorCode .. keywordText .. "|r"
+        else -- both
+            highlightedKeyword = colorCode .. keywordText .. "|r"
+        end
+
+        highlightedContent = beforeText .. highlightedKeyword .. afterText
+    end
+
+    -- 하이라이트된 내용을 msgContent에 할당
+    msgContent = highlightedContent
+
+    -- 디버그: 키워드 매칭
+    if debugMode and foundKeyword then
+        print(string.format("|cFF00FFFF[FoxChat] %d개 키워드 매칭!|r", #matchedKeywords))
     end
     
     -- 플레이어 이름 부분과 하이라이트된 메시지 부분을 다시 결합
@@ -647,26 +766,161 @@ local function HookChatFrame(chatFrame)
 
     chatFrame.AddMessage = function(self, text, r, g, b, ...)
         if text and FoxChatDB.filterEnabled then
+            -- 디버그 모드에서만 수도원 메시지 출력
+            if debugMode and string.find(text, "수도원") then
+                print(string.format("|cFF00FF00[HookChatFrame]|r '수도원' 메시지 감지!"))
+
+                -- 채널 링크 패턴 찾기
+                local channelLink = string.match(text, "|Hchannel:([^|]+)|h")
+                if channelLink then
+                    print(string.format("  채널 링크: %s", channelLink))
+                end
+            end
+
             -- 메시지에서 채널 타입 추측
             local channelGroup = nil
 
+            -- 채널 링크에서 정확한 채널 정보 추출
+            local channelLink = string.match(text, "|Hchannel:([^|]+)|h")
+
             -- 길드 메시지 패턴
-            if string.find(text, "|Hchannel:GUILD") or string.find(text, "길드") then
+            if string.find(text, "|Hchannel:GUILD") or string.find(text, "|Hchannel:길드") then
                 channelGroup = "GUILD"
             -- 파티/공격대 메시지 패턴
             elseif string.find(text, "|Hchannel:PARTY") or string.find(text, "|Hchannel:RAID") or
-                   string.find(text, "파티") or string.find(text, "공격대") then
+                   string.find(text, "|Hchannel:파티") or string.find(text, "|Hchannel:공격대") then
                 channelGroup = "PARTY_RAID"
-            -- LFG 채널 패턴
-            elseif string.find(text, "LookingForGroup") or string.find(text, "파티찾기") then
-                channelGroup = "LFG"
+            -- LFG 채널 패턴 - 채널 링크 확인 (channel:숫자 형식)
+            elseif channelLink then
+                -- 채널 링크가 있으면 채널 번호나 이름 확인
+                -- 파티찾기는 보통 channel:4, 거래는 channel:2 또는 channel:채널명 형태
+                local isLFG = false
+                local isTrade = false
+
+                -- 채널 번호가 2인지 확인 (거래 채널)
+                if channelLink == "2" or
+                   channelLink == "channel2" or
+                   channelLink == "CHANNEL:2" or
+                   string.find(channelLink, "^channel:?2$") or
+                   string.find(channelLink, "^CHANNEL:?2$") then
+                    isTrade = true
+                end
+
+                -- 채널 번호가 4인지 확인 (파티찾기 채널)
+                if channelLink == "4" or
+                   channelLink == "channel4" or
+                   channelLink == "CHANNEL:4" or
+                   string.find(channelLink, "^channel:?4$") or
+                   string.find(channelLink, "^CHANNEL:?4$") then
+                    isLFG = true
+                end
+
+                -- GetChannelName API를 사용하여 실제 채널명 확인
+                local _, channelName2 = GetChannelName(2)
+                if channelName2 and (string.find(channelName2, "거래") or
+                                    string.find(channelName2, "Trade")) then
+                    -- 2번 채널이 거래 채널이고, 현재 메시지가 2번 채널이면
+                    if channelLink and (channelLink == "2" or string.find(channelLink, "2")) then
+                        isTrade = true
+                    end
+                end
+
+                local _, channelName4 = GetChannelName(4)
+                if channelName4 and (string.find(channelName4, "파티찾기") or
+                                    string.find(channelName4, "LookingForGroup")) then
+                    -- 4번 채널이 파티찾기 채널이고, 현재 메시지가 4번 채널이면
+                    if channelLink and (channelLink == "4" or string.find(channelLink, "4")) then
+                        isLFG = true
+                    end
+                end
+
+                -- 텍스트에서 거래 관련 패턴 확인
+                if string.find(text, "거래") or
+                   string.find(text, "Trade") or
+                   string.find(text, "%[2%. ") or  -- [2. 거래] 패턴
+                   string.find(text, "%[거래%]") then  -- [거래] 패턴
+                    isTrade = true
+                end
+
+                -- 텍스트에서 파티찾기 관련 패턴 확인
+                if string.find(text, "파티찾기") or
+                   string.find(text, "LookingForGroup") or
+                   string.find(text, "%[4%. ") or  -- [4. 파티찾기] 패턴
+                   string.find(text, "%[파티찾기%]") then  -- [파티찾기] 패턴
+                    isLFG = true
+                end
+
+                -- 채널 표시명에서도 확인
+                local channelDisplay = string.match(text, "|h%[([^%]]+)%]|h")
+                if channelDisplay then
+                    if string.find(channelDisplay, "거래") or
+                       string.find(channelDisplay, "Trade") or
+                       string.find(channelDisplay, "^2%. ") or
+                       string.find(channelDisplay, "^2 %. ") or
+                       channelDisplay == "2" then
+                        isTrade = true
+                    elseif string.find(channelDisplay, "파티찾기") or
+                           string.find(channelDisplay, "LookingForGroup") or
+                           string.find(channelDisplay, "^4%. ") or
+                           string.find(channelDisplay, "^4 %. ") or
+                           channelDisplay == "4" then
+                        isLFG = true
+                    end
+                end
+
+                if isTrade then
+                    channelGroup = "TRADE"
+                elseif isLFG then
+                    channelGroup = "LFG"
+                else
+                    -- 다른 번호 채널은 PUBLIC으로 분류
+                    channelGroup = "PUBLIC"
+                end
+            -- 일반/외침 메시지 (다양한 패턴 확인)
+            elseif string.find(text, "|Hchannel:SAY") or string.find(text, "|Hchannel:YELL") or
+                   string.find(text, "|Hchannel:일반") or string.find(text, "|Hchannel:외침") or
+                   string.find(text, "%[일반") or string.find(text, "%[외침") or
+                   string.find(text, "%[공개") then
+                channelGroup = "PUBLIC"
+            -- 플레이어 링크만 있고 채널 링크가 없는 경우 (일반적으로 일반/외침 채팅)
+            elseif not channelLink and string.find(text, "|Hplayer:") then
+                -- 길드나 파티 메시지가 아닌 경우 PUBLIC으로 분류
+                if not string.find(text, "%[길드%]") and
+                   not string.find(text, "%[파티%]") and
+                   not string.find(text, "%[공격대%]") then
+                    channelGroup = "PUBLIC"
+                end
             -- 공개 채널 (기본값)
             else
                 channelGroup = "PUBLIC"
             end
 
-            -- 채널 그룹이 활성화되어 있는 경우만 하이라이트
-            if channelGroup and FoxChatDB.channelGroups and FoxChatDB.channelGroups[channelGroup] then
+
+            -- 채널 그룹이 활성화되어 있는 경우만 하이라이트 (새로운 방식 우선 사용)
+            local channelEnabled = false
+            if addon.ChannelFilter then
+                -- channelGroup을 실제 채널 타입으로 변환
+                local channelType, channelName = nil, nil
+                if channelGroup == "LFG" then
+                    channelType = "CHANNEL"
+                    channelName = "파티찾기"
+                elseif channelGroup == "TRADE" then
+                    channelType = "CHANNEL"
+                    channelName = "거래"
+                elseif channelGroup == "GUILD" then
+                    channelType = "GUILD"
+                elseif channelGroup == "PARTY_RAID" then
+                    channelType = "PARTY"
+                elseif channelGroup == "PUBLIC" then
+                    channelType = "SAY"
+                end
+                channelEnabled = addon.ChannelFilter:IsChannelEnabled(channelType, channelName)
+            else
+                -- 기존 방식 폴백
+                channelEnabled = channelGroup and FoxChatDB.channelGroups and FoxChatDB.channelGroups[channelGroup]
+            end
+
+            if channelEnabled then
                 -- 먼저 작성자를 추출
                 local author = nil
 
@@ -703,18 +957,49 @@ local function HookChatFrame(chatFrame)
 
                 local highlightedText, found = HighlightKeywords(text, channelGroup, author)
 
+                -- 디버그: HookChatFrame에서 결과 확인
+                if debugMode and channelGroup == "LFG" then
+                    print(string.format("|cFF00FFFF[HookChatFrame]|r LFG 메시지, found: %s", tostring(found)))
+                    if string.find(text, "수도원") then
+                        print(string.format("|cFF00FFFF[HookChatFrame]|r '수도원' 발견! found: %s", tostring(found)))
+
+                        -- HighlightKeywords가 제대로 작동하는지 확인
+                        local testHighlight, testFound = HighlightKeywords(text, channelGroup, author)
+                        print(string.format("|cFF00FFFF[HookChatFrame]|r HighlightKeywords 결과: found=%s", tostring(testFound)))
+                    end
+                end
+
                 if found then
                     -- 소리 재생 (ring.wav 파일 사용)
                     if FoxChatDB.playSound then
                         PlaySoundFile("Interface\\AddOns\\FoxChat\\ring.wav", "Master")
                     end
 
-                    -- 메시지 내용 추출 (콜론 이후)
+                    -- 메시지 내용 추출 (순수 텍스트만)
                     local msgContent = text
-                    local colonPos = string.find(text, ":", 1, true)
+
+                    -- 1. 먼저 플레이어 이름 뒤의 콜론 찾기
+                    local colonPos = string.find(text, "]|h:", 1, true)
                     if colonPos then
-                        msgContent = string.sub(text, colonPos + 1)
+                        msgContent = string.sub(text, colonPos + 4)  -- "]|h:" 이후부터
+                    else
+                        -- 대체 패턴: 일반 콜론 찾기
+                        colonPos = string.find(text, ":", 1, true)
+                        if colonPos then
+                            msgContent = string.sub(text, colonPos + 1)
+                        end
                     end
+
+                    -- 2. 모든 WoW UI 코드 제거 (|c, |r, |H 등)
+                    msgContent = string.gsub(msgContent, "|c%x%x%x%x%x%x%x%x", "")  -- 색상 코드 제거
+                    msgContent = string.gsub(msgContent, "|r", "")  -- 리셋 코드 제거
+                    msgContent = string.gsub(msgContent, "|H.-|h", "")  -- 하이퍼링크 제거
+                    msgContent = string.gsub(msgContent, "|h", "")  -- 남은 |h 제거
+                    msgContent = string.gsub(msgContent, "|T.-|t", "")  -- 텍스처 제거
+
+                    -- 3. 앞뒤 공백 제거
+                    msgContent = string.gsub(msgContent, "^%s+", "")
+                    msgContent = string.gsub(msgContent, "%s+$", "")
 
                     -- 토스트 알림 표시 (서버명 제거)
                     local cleanAuthor = author or "Unknown"
@@ -745,6 +1030,17 @@ local function ChatFilter(self, event, msg, author, ...)
     -- 채널 확인 및 그룹 결정
     local channelType = event:match("CHAT_MSG_(.+)")
     local channelName = select(7, ...) -- 채널 이름 (번호 채널용)
+
+    -- LFG 채널 디버그 출력 (비활성화 - 너무 많은 출력)
+    --[[
+    if channelType == "CHANNEL" and channelName then
+        print(string.format("|cFFFF00FF[FoxChat DEBUG]|r 채널 메시지 - Type: %s, Name: %s, Message: %s",
+            channelType or "nil",
+            channelName or "nil",
+            (msg and string.sub(msg, 1, 50) .. (string.len(msg) > 50 and "..." or "")) or "nil"))
+    end
+    --]]
+
     local channelGroup = GetChannelGroup(channelType, channelName)
 
     -- 디버그 출력 간소화
@@ -759,12 +1055,53 @@ local function ChatFilter(self, event, msg, author, ...)
             keywordCount))
     end
 
-    if not channelGroup or not FoxChatDB.channelGroups[channelGroup] then
-        return false
-    end
+    -- 새로운 채널 필터 모듈 사용
+    local found = false
+    local highlightedMsg = msg
 
-    -- 키워드 검색 및 하이라이트
-    local highlightedMsg, found = HighlightKeywords(msg, channelGroup, author)
+    -- ChatFilter는 메시지를 변경하지 않고 통과시킴
+    -- 실제 하이라이팅은 HookChatFrame에서 처리
+    return false
+
+    --[[ 기존 코드 비활성화 (HookChatFrame이 처리)
+    if addon.ChannelFilter then
+        local shouldFilter, matchedKeyword = addon.ChannelFilter:ShouldFilter(msg, channelType, channelName)
+
+        -- 디버그 출력
+        if debugMode and channelType == "CHANNEL" then
+            print(string.format("|cFFFF0000[ChatFilter]|r shouldFilter: %s, matchedKeyword: %s",
+                tostring(shouldFilter), matchedKeyword or "nil"))
+        end
+
+        if shouldFilter and matchedKeyword then
+            -- 키워드가 매치되었을 때만 처리
+            found = true
+
+            -- HighlightKeywords 함수를 사용하여 제대로 하이라이트 처리
+            highlightedMsg, _ = HighlightKeywords(msg, channelGroup, author)
+
+            -- 디버그 출력
+            if debugMode and channelType == "CHANNEL" then
+                print(string.format("|cFF00FF00[ChatFilter]|r LFG 필터 작동! 키워드: %s", matchedKeyword))
+            end
+        else
+            -- 키워드가 매치되지 않았으면 필터링하지 않음
+            return false
+        end
+    else
+        -- 기존 로직 폴백
+        if not channelGroup or not FoxChatDB.channelGroups[channelGroup] then
+            return false
+        end
+
+        -- 키워드 검색 및 하이라이트
+        local foundKeyword
+        highlightedMsg, foundKeyword = HighlightKeywords(msg, channelGroup, author)
+        if not foundKeyword then
+            return false
+        end
+        found = foundKeyword
+    end
 
     if found then
         -- 소리 재생
@@ -781,11 +1118,18 @@ local function ChatFilter(self, event, msg, author, ...)
         end
         ShowToast(cleanAuthor, msg, channelGroup)
 
+        -- 디버그: 필터링 성공 출력
+        if debugMode then
+            print(string.format("|cFF00FF00[ChatFilter]|r 필터링 성공! 채널: %s, 작성자: %s",
+                channelGroup or "nil", cleanAuthor or "nil"))
+        end
+
         -- 메시지를 하이라이트된 버전으로 교체
         return false, highlightedMsg, author, ...
     end
 
     return false  -- 변경 없이 통과
+    --]]
 end
 
 -- UTF-8 유틸리티 모듈
@@ -3257,9 +3601,31 @@ frame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
         -- 지역화된 기본 키워드 설정
         defaults.keywords = L["DEFAULT_KEYWORDS"]
-        
+
         -- 설정 로드
         FoxChatDB = FoxChatDB or {}
+
+        -- 마이그레이션 모듈 초기화
+        if addon.Migration then
+            addon.Migration:Initialize()
+        end
+
+        -- ChannelFilter 모듈 디버그 정보
+        if addon.ChannelFilter then
+            if debugMode then
+                print("|cFF00FF00[FoxChat]|r ChannelFilter 모듈 로드됨")
+                addon.ChannelFilter:DebugPrint()
+            end
+
+            -- LFG 채널 키워드 확인 (디버그용)
+            if FoxChatDB and FoxChatDB.channelFilters and FoxChatDB.channelFilters.LFG then
+                local lfgKeywords = FoxChatDB.channelFilters.LFG.keywords or ""
+                if lfgKeywords ~= "" then
+                    print(string.format("|cFF00FF00[FoxChat]|r LFG 채널 키워드 로드됨: %s",
+                        string.sub(lfgKeywords, 1, 50) .. (string.len(lfgKeywords) > 50 and "..." or "")))
+                end
+            end
+        end
         for k, v in pairs(defaults) do
             if FoxChatDB[k] == nil then
                 FoxChatDB[k] = v
@@ -3385,6 +3751,41 @@ end
 
 -- ShowToast 함수를 FoxChat 테이블에 추가
 FoxChat.ShowToast = ShowToast
+
+-- 토스트 미리보기 함수 (설정 화면에서 사용)
+function ShowToastPreview(duration)
+    local testMessage = "토스트 알림 테스트입니다"
+    local testAuthor = "테스트"
+
+
+    -- 토스트 표시
+    ShowToast(testAuthor, testMessage, "GUILD", true)
+
+    -- 지정된 시간 후 자동으로 사라지도록 설정
+    if duration and activeToasts[1] then
+        C_Timer.After(duration, function()
+            if activeToasts[1] and activeToasts[1]:IsShown() then
+                activeToasts[1].fadeOutTimer = C_Timer.NewTimer(0.5, function()
+                    -- activeToasts가 여전히 존재하고 첫 번째 요소가 있는지 확인
+                    if activeToasts and activeToasts[1] then
+                        local toast = activeToasts[1]
+                        -- 풀에 반환
+                        table.insert(toastPool, toast)
+                        -- activeToasts에서 제거
+                        table.remove(activeToasts, 1)
+                        -- 토스트 숨기기
+                        toast:Hide()
+                        -- 위치 재정렬
+                        RepositionToasts()
+                    end
+                end)
+            end
+        end)
+    end
+end
+
+-- addon 테이블에도 추가
+addon.ShowToastPreview = ShowToastPreview
 
 -- UpdateAdButton 함수를 FoxChat 테이블에 추가
 FoxChat.UpdateAdButton = UpdateAdButton
@@ -3568,8 +3969,163 @@ SlashCmdList["FOXCHAT"] = function(msg)
         else
             print("|cFFFF7D0A[FoxChat]|r 디버그 모드가 비활성화되었습니다.")
         end
+    elseif cmd == "lfg" then
+        -- LFG 채널 설정 확인
+        if FoxChatDB and FoxChatDB.channelFilters and FoxChatDB.channelFilters.LFG then
+            local lfg = FoxChatDB.channelFilters.LFG
+            print("|cFF00FF00[FoxChat LFG 설정]|r")
+            print(string.format("  활성화: %s", tostring(lfg.enabled)))
+
+            -- 원본 키워드 문자열 표시
+            local rawKeywords = lfg.keywords or "없음"
+            print(string.format("  원본 키워드 문자열: %s", rawKeywords))
+
+            -- 키워드 문자열 길이 확인
+            if rawKeywords ~= "없음" then
+                print(string.format("  문자열 길이: %d", string.len(rawKeywords)))
+
+                -- 각 키워드 개별 확인
+                local kwCount = 0
+                for keyword in string.gmatch(rawKeywords, "[^,]+") do
+                    kwCount = kwCount + 1
+                    local trimmed = string.trim(keyword)
+                    print(string.format("    %d. '%s' (길이: %d)", kwCount, trimmed, string.len(trimmed)))
+                    if trimmed == "수도원" then
+                        print("      -> '수도원' 발견!")
+                    end
+                end
+            end
+
+            print(string.format("  무시 키워드: %s", lfg.ignoreKeywords or "없음"))
+
+            -- 실제 ChannelFilter 모듈에서 가져오는 키워드 테스트
+            print("|cFFFFFF00[ChannelFilter 테스트]|r")
+            local keywords = addon.ChannelFilter:GetKeywords("CHANNEL", "파티찾기")
+            local count = 0
+            local hasMonastery = false
+            print("  로드된 키워드:")
+            for lowerKey, originalValue in pairs(keywords) do
+                count = count + 1
+                if count <= 15 then
+                    print(string.format("    %d. 소문자:'%s' → 원본:'%s'", count, lowerKey, originalValue))
+                end
+                if lowerKey == "수도원" or originalValue == "수도원" then
+                    hasMonastery = true
+                    print(string.format("    |cFF00FF00'수도원' 발견! 소문자:'%s' 원본:'%s'|r", lowerKey, originalValue))
+                end
+            end
+            print(string.format("  키워드 개수: %d개", count))
+            print(string.format("  '수도원' 포함 여부: %s", hasMonastery and "O" or "X"))
+
+            -- 테스트 메시지로 실제 매칭 테스트
+            local testMsg = "수도원 테스트"
+            local shouldFilter, matchedKeyword = addon.ChannelFilter:ShouldFilter(testMsg, "CHANNEL", "파티찾기")
+            print(string.format("  '수도원 테스트' 메시지 필터링: %s", shouldFilter and ("O - 매치된 키워드: " .. (matchedKeyword or "nil")) or "X"))
+        else
+            print("|cFFFF0000[FoxChat]|r LFG 채널 설정이 없습니다")
+        end
     elseif cmd == "test" then
-        FoxChat:TestHighlight()
+        -- 테스트 메시지를 지정된 채널에 시뮬레이션
+        local channel, message = nil, nil
+        if args then
+            local spacePos = string.find(args, " ")
+            if spacePos then
+                channel = string.sub(args, 1, spacePos - 1)
+                message = string.sub(args, spacePos + 1)
+            else
+                message = args
+            end
+        end
+
+        -- 채널 매핑
+        local channelMap = {
+            ["lfg"] = "LFG",
+            ["파티찾기"] = "LFG",
+            ["trade"] = "TRADE",
+            ["거래"] = "TRADE",
+            ["guild"] = "GUILD",
+            ["길드"] = "GUILD",
+            ["say"] = "SAY",
+            ["공개"] = "SAY",
+            ["일반"] = "SAY",
+            ["party"] = "PARTY",
+            ["파티"] = "PARTY"
+        }
+
+        local targetChannel = channel and channelMap[string.lower(channel)] or "LFG"
+        local testMessage = message or "수도원 테스트 메시지"
+
+        print("|cFFFFFF00[FoxChat 테스트]|r")
+        print(string.format("  채널: %s", targetChannel))
+        print(string.format("  메시지: %s", testMessage))
+
+        -- 필터링 활성화 상태 확인
+        print(string.format("  전체 필터링: %s", FoxChatDB.filterEnabled and "O" or "X"))
+
+        -- 채널별 매핑
+        local channelType, channelName = nil, nil
+        if targetChannel == "LFG" then
+            channelType, channelName = "CHANNEL", "파티찾기"
+        elseif targetChannel == "TRADE" then
+            channelType, channelName = "CHANNEL", "거래"
+        elseif targetChannel == "GUILD" then
+            channelType = "GUILD"
+        elseif targetChannel == "SAY" then
+            channelType = "SAY"
+        elseif targetChannel == "PARTY" then
+            channelType = "PARTY"
+        end
+
+        -- 채널 활성화 상태 확인
+        local channelEnabled = addon.ChannelFilter:IsChannelEnabled(channelType, channelName)
+        print(string.format("  %s 채널 필터링: %s", targetChannel, channelEnabled and "O" or "X"))
+
+        -- ChannelFilter로 테스트
+        local shouldFilter, matchedKeyword = addon.ChannelFilter:ShouldFilter(testMessage, channelType, channelName)
+        print(string.format("  필터링 결과: %s", shouldFilter and ("O - 키워드: " .. (matchedKeyword or "nil")) or "X"))
+
+        -- HighlightKeywords로 직접 키워드 확인
+        print("|cFFFFFF00[키워드 디버그]|r")
+        local testKeywords = addon.ChannelFilter:GetKeywords(channelType, channelName)
+        local keywordCount = 0
+        local hasMonastery = false
+        for k, v in pairs(testKeywords) do
+            keywordCount = keywordCount + 1
+            if keywordCount <= 20 then  -- 모든 키워드 표시
+                print(string.format("    키워드 %d: '%s' -> '%s'", keywordCount, k, v))
+            end
+            if k == "수도원" or v == "수도원" then
+                hasMonastery = true
+            end
+        end
+        print(string.format("  총 키워드 수: %d개", keywordCount))
+        print(string.format("  '수도원' 포함 여부: %s", hasMonastery and "O" or "X"))
+
+        -- HighlightKeywords로 테스트 (디버그 출력 활성화)
+        print("|cFFFFFF00[하이라이트 테스트]|r")
+
+        -- 함수 호출 전 확인
+        print("  HighlightKeywords 함수 호출 시작...")
+
+        -- 오류 처리를 위한 pcall 사용
+        local success, highlighted, foundKeyword = pcall(HighlightKeywords, testMessage, targetChannel, "테스트유저")
+
+        if not success then
+            print(string.format("  |cFFFF0000오류 발생: %s|r", highlighted))
+            print("  하이라이트 결과: X")
+        else
+            print(string.format("  하이라이트 결과: %s", foundKeyword and "O" or "X"))
+            if foundKeyword then
+                print("  하이라이트된 텍스트: " .. highlighted)
+
+                -- 토스트 테스트도 같이 표시
+                print("|cFFFFFF00[토스트 테스트]|r")
+                print("  토스트 표시 중...")
+                ShowToast("테스트유저", testMessage, targetChannel, true)
+            else
+                print("  |cFFFF0000하이라이트 실패 - 키워드를 찾지 못함|r")
+            end
+        end
     elseif cmd == "" or cmd == "config" then
         if FoxChat.ShowConfig then
             FoxChat:ShowConfig()
