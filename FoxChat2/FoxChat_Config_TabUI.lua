@@ -1743,19 +1743,12 @@ function FoxChat:ShowConfig()
     tabSeparator:SetPoint("RIGHT", configFrame, "RIGHT", 20, 0)
 
     -- =============================================
-    -- 탭 1: 채팅 필터링 (새로운 채널별 UI 사용)
+    -- 탭 1: 채팅 필터링
     -- =============================================
     local tab1 = tabContents[1]
 
-    -- 새로운 채널별 필터링 UI 호출
-    if addon.CreateChatFilterTab then
-        addon.CreateChatFilterTab(tab1, FoxChatDB, CreateTextArea, CreateSeparator)
-    else
-        -- 기존 UI 코드 (fallback)
-        print("|cFFFF0000[FoxChat]|r New UI module not loaded, using legacy UI")
-
-        -- 상단 체크박스들 (한 줄로 배치)
-        local filterEnabledCheckbox = CreateFrame("CheckButton", nil, tab1)
+    -- 상단 체크박스들 (한 줄로 배치)
+    local filterEnabledCheckbox = CreateFrame("CheckButton", nil, tab1)
     filterEnabledCheckbox:SetSize(24, 24)
     filterEnabledCheckbox:SetPoint("TOPLEFT", tab1, "TOPLEFT", 10, -10)
     filterEnabledCheckbox:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
@@ -2134,8 +2127,6 @@ function FoxChat:ShowConfig()
             FoxChat.ShowToast("테스트 사용자", "토스트 위치 테스트 메시지입니다.", "GUILD", true)
         end
     end)
-
-    end  -- 기존 UI fallback 끝
 
     -- =============================================
     -- 탭 2: 말머리/말꼬리
